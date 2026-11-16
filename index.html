@@ -50,14 +50,16 @@
   #lobby{padding:5vh 5vw;display:flex;flex-direction:column;align-items:center;gap:3vh}
   #lobby h1{font-size:clamp(36px,5vw,72px);margin:0;font-weight:800;text-align:center}
   .lobby-row{display:flex;gap:5vw;align-items:center;flex-wrap:wrap;justify-content:center}
-  .qrbox{background:#fff;padding:18px;border-radius:20px}
+  .qrbox{background:#fff;padding:18px;border-radius:20px;width:fit-content;margin:0 auto;box-shadow:0 0 0 2px #E8B84A}
   .joinurl{font-family:var(--mono);color:var(--muted);font-size:16px;text-align:center;word-break:break-all;max-width:520px}
-  .room{font-family:var(--mono);font-size:22px;margin-top:8px;text-align:center}
+  .room{font-family:var(--mono);font-size:22px;margin-top:16px;text-align:center}
   .room b{color:var(--gold);letter-spacing:.12em}
   .chips{display:grid;gap:14px}
   .chip{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 18px;min-width:280px}
   .chip .t{font-family:var(--mono);font-size:30px;width:80px}
-  .chip .s{font-family:var(--mono);font-size:14px;color:var(--muted)}
+  .chip .s{font-family:var(--mono);font-size:14px;color:var(--muted);flex:1}
+  .release{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:6px 14px;font-family:var(--mono);font-size:13px}
+  .release:hover{border-color:var(--red);color:var(--red)}
   .chip.on{border-color:var(--green)}
   .chip.on .s{color:var(--green)}
   .dot{width:10px;height:10px;border-radius:5px;background:var(--line);flex:none}
@@ -199,10 +201,10 @@
   <div class="label">Game 02 · Buzzer final</div>
   <h1>Finalists, scan to join</h1>
   <div class="lobby-row">
-    <div>
+    <div style="display:flex;flex-direction:column;align-items:center">
       <div class="qrbox"><div id="qr"></div></div>
-      <div class="room">Room <b id="roomCode"></b></div>
-      <div class="joinurl" id="joinUrl"></div>
+      <div class="room hidden">Room <b id="roomCode"></b></div>
+      <div class="joinurl hidden" id="joinUrl"></div>
     </div>
     <div class="chips" id="chips"></div>
   </div>
@@ -419,13 +421,71 @@ function renderChips(){
   $('chips').innerHTML = setup.players.map((p,i) => {
     const on = !!presence[i], claimed = !!claims[i];
     return `<div class="chip${on ? ' on' : ''}"><span class="dot"></span><span class="t">${esc(p.tag)}</span>
-      <span class="s">${on ? 'Joined' : claimed ? 'Joined, phone asleep?' : 'Waiting…'}</span></div>`;
+      <span class="s">${on ? 'Joined' : claimed ? 'Joined, phone asleep?' : 'Waiting…'}</span>
+      ${on || claimed ? `<button type="button" class="release" data-release="${i}" aria-label="Release seat ${esc(p.tag)}">Release</button>` : ''}</div>`;
   }).join('');
+}
+// Branded QR: navy modules (best for scanning), gold corner eyes, "PHILLIP CFD" badge in the centre.
+// High error correction (H) lets the code still scan with the centre covered.
+function qrModel(text){
+  for (const lvl of ['H','Q','M']) {
+    try {
+      const tmp = document.createElement('div');
+      const q = new QRCode(tmp, { text, width: 64, height: 64, correctLevel: QRCode.CorrectLevel[lvl] });
+      const m = q && q._oQRCode;
+      if (m && typeof m.isDark === 'function') return { m, lvl };
+    } catch (e) {}
+  }
+  return null;
 }
 function drawQR(el, size){
   el.innerHTML = '';
-  try { new QRCode(el, { text: joinURL(), width: size, height: size, colorDark:'#0F1B2D', colorLight:'#FFFFFF', correctLevel: QRCode.CorrectLevel.M }); }
-  catch (e) { el.textContent = 'QR unavailable: use the link below'; }
+  const res = typeof QRCode !== 'undefined' ? qrModel(joinURL()) : null;
+  if (!res) { el.textContent = 'QR unavailable: use the link below'; return; }
+  const { m, lvl } = res, n = m.getModuleCount(), cell = size / n, dpr = window.devicePixelRatio || 1;
+  const NAVY = '#0F1B2D', GOLD = '#B8892A', GOLD_LIGHT = '#E8B84A';
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(size * dpr); cv.height = Math.round(size * dpr);
+  cv.style.width = cv.style.height = size + 'px'; cv.style.display = 'block';
+  cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', 'QR code to join the buzzer');
+  const c = cv.getContext('2d'); c.scale(dpr, dpr);
+  c.fillStyle = '#FFFFFF'; c.fillRect(0, 0, size, size);
+  const rr = (x, y, w, h, r) => { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); c.fill(); };
+  const finder = (r, k) => (r < 7 && k < 7) || (r < 7 && k >= n - 7) || (r >= n - 7 && k < 7);
+  // centre badge area (only with H correction and a big enough code)
+  const logo = lvl === 'H' && size >= 200;
+  const bw = Math.round(n * 0.40) * cell, bh = Math.round(n * 0.14) * cell;
+  const bx = (size - bw) / 2, by = (size - bh) / 2;
+  const underBadge = (x, y) => logo && x + cell > bx && x < bx + bw && y + cell > by && y < by + bh;
+  c.fillStyle = NAVY;
+  for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) {
+    if (!m.isDark(r, k) || finder(r, k)) continue;
+    const x = k * cell, y = r * cell;
+    if (underBadge(x, y)) continue;
+    c.fillRect(x, y, cell + 0.35, cell + 0.35);
+  }
+  for (const [r, k] of [[0, 0], [0, n - 7], [n - 7, 0]]) {
+    const x = k * cell, y = r * cell;
+    c.fillStyle = GOLD; rr(x, y, 7 * cell, 7 * cell, cell * 0.6);
+    c.fillStyle = '#FFFFFF'; rr(x + cell, y + cell, 5 * cell, 5 * cell, cell * 0.3);
+    c.fillStyle = GOLD; rr(x + 2 * cell, y + 2 * cell, 3 * cell, 3 * cell, cell * 0.3);
+  }
+  if (logo) {
+    c.fillStyle = '#FFFFFF'; rr(bx, by, bw, bh, cell * 1.2);
+    c.strokeStyle = GOLD_LIGHT; c.lineWidth = Math.max(1, cell * 0.35);
+    c.beginPath(); const pad = cell * 0.5;
+    c.roundRect ? c.roundRect(bx + pad, by + pad, bw - 2 * pad, bh - 2 * pad, cell) : c.rect(bx + pad, by + pad, bw - 2 * pad, bh - 2 * pad);
+    c.stroke();
+    let fs = bh * 0.42; const sp = 0.14;
+    const word = (t) => { c.font = `800 ${fs}px Montserrat, "Segoe UI", Arial, sans-serif`; let w = 0; for (const ch of t) w += c.measureText(ch).width + fs * sp; return w - fs * sp; };
+    const gap = () => fs * 0.45;
+    while (word('PHILLIP') + gap() + word('CFD') > bw * 0.82 && fs > 6) fs -= 0.5;
+    let x = size / 2 - (word('PHILLIP') + gap() + word('CFD')) / 2; const y = by + bh / 2;
+    c.textBaseline = 'middle';
+    const draw = (t, col) => { c.fillStyle = col; c.font = `800 ${fs}px Montserrat, "Segoe UI", Arial, sans-serif`; for (const ch of t) { c.fillText(ch, x, y); x += c.measureText(ch).width + fs * sp; } x -= fs * sp; };
+    draw('PHILLIP', NAVY); x += gap(); draw('CFD', GOLD);
+  }
+  el.appendChild(cv);
 }
 function openLobby(){
   G = null; show('lobby');
@@ -434,6 +494,11 @@ function openLobby(){
 }
 $('backSetup').onclick = () => { show('setup'); renderRows(); };
 $('resetJoins').onclick = async () => { await remove(R('claims')); await remove(R('presence')); };
+$('chips').addEventListener('click', async e => {
+  const b = e.target.closest('[data-release]'); if (!b) return;
+  const i = +b.dataset.release; b.disabled = true; b.textContent = 'Releasing…';
+  try { await remove(R(`claims/${i}`)); await remove(R(`presence/${i}`)); } catch (err) { b.disabled = false; b.textContent = 'Release'; }
+});
 
 // ---------- audio ----------
 let ctx = null;
