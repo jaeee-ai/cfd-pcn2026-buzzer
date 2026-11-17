@@ -42,6 +42,8 @@
   .pins{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
   .pins label{display:flex;flex-direction:column;gap:6px;font-family:var(--mono);font-size:12px;color:var(--muted)}
   .pins input{font-family:var(--mono);font-size:22px;letter-spacing:.2em;text-align:center}
+  .stafftick{display:flex;align-items:center;gap:6px;font-family:var(--sans);font-size:12px;color:var(--muted);letter-spacing:0}
+  .stafftick input{width:auto;accent-color:var(--gold)}
   .status{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;color:var(--muted);line-height:1.5;margin-top:10px}
   .status b{color:var(--cream)}
 
@@ -78,6 +80,10 @@
   .chip.pop{animation:pop 1.1s ease-out}
   @keyframes pop{0%{transform:scale(1)}25%{transform:scale(1.14);box-shadow:0 0 60px rgba(107,196,138,.85)}100%{transform:scale(1)}}
   .chip.wait{opacity:.8}
+  .chip.staff{border-style:dashed}
+  .chip .pos.stafftag{background:#9AA7BA;color:var(--navy)}
+  .chip.staff.in{background:#1C2A3D;border-color:#9AA7BA;box-shadow:none}
+  .chip.staff.in .st,.chip.staff.in .n{color:var(--muted)}
   .chip.in{cursor:pointer}
   .chip.claimed{cursor:pointer;border-color:#4A6A93;opacity:1}
   .chip.claimed .st{color:var(--cream)}
@@ -207,7 +213,7 @@
     <div id="pics"></div>
 
     <h3>Table PINs</h3>
-    <p>Each table needs its PIN to submit. Print the cards and put one on each table.</p>
+    <p>Each table needs its PIN to submit. Print the cards and put one on each table. Tick <b>Staff table</b> for tables that play for fun: they can submit, but they're left out of the race positions, the leaderboard and the prizes.</p>
     <div class="pins" id="pins"></div>
     <div class="row" style="margin-top:14px">
       <button class="btn ghost" id="genPins" type="button">Generate new PINs</button>
@@ -314,6 +320,9 @@ const STORE = 'picture-host-setup';
 let S = (() => { try { return JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { return null; } })() || {};
 S.nPics = S.nPics || 3; S.nTables = S.nTables || 8; S.mins = S.mins || 8;
 S.pics = S.pics || []; S.pins = S.pins || {};
+if (S.staff === undefined) S.staff = { 1: true };            // staff tables play for fun: not ranked, no prizes
+const isStaff = t => !!(S.staff && S.staff[t]);
+const staffList = () => Object.keys(S.staff || {}).filter(t => S.staff[t] && +t <= S.nTables).map(Number);
 const saveS = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) {} };
 const IMG = [];
 for (let i = 0; i < 6; i++) { try { IMG[i] = localStorage.getItem('picture-host-img-' + i) || ''; } catch (e) { IMG[i] = ''; } }
@@ -377,7 +386,8 @@ function renderSetup(){
         <label class="btn ghost" style="padding:8px 16px">Choose picture<input type="file" accept="image/*" data-img="${i}" hidden></label>
         ${IMG[i] ? `<button class="btn ghost" type="button" style="padding:8px 16px" data-rmimg="${i}">Remove</button>` : ''}</div>
       <div class="opts" style="margin-top:12px">${LETTERS.split('').map((l, k) => `<label>${l}<input type="text" data-p="${i}" data-k="${k}" value="${esc(p.opts[k])}" placeholder="${k === 3 ? '(optional)' : 'Option ' + l}" aria-label="Picture ${i + 1} option ${l}"></label>`).join('')}</div></div>`).join('');
-  $('pins').innerHTML = Array.from({ length: S.nTables }, (_, k) => k + 1).map(t => `<label>Table ${t}<input type="text" inputmode="numeric" maxlength="4" data-pin="${t}" value="${esc(S.pins[t])}"></label>`).join('');
+  $('pins').innerHTML = Array.from({ length: S.nTables }, (_, k) => k + 1).map(t => `<label>Table ${t}<input type="text" inputmode="numeric" maxlength="4" data-pin="${t}" value="${esc(S.pins[t])}">
+    <span class="stafftick"><input type="checkbox" data-staff="${t}"${isStaff(t) ? ' checked' : ''}> Staff table (not ranked)</span></label>`).join('');
   renderStatus();
 }
 function renderStatus(){
@@ -401,6 +411,11 @@ document.addEventListener('input', e => {
 document.addEventListener('change', async e => {
   const t = e.target;
   if (t.dataset.ans !== undefined) { S.pics[+t.dataset.ans].ans = t.value; saveS(); }
+  if (t.dataset.staff !== undefined) {
+    S.staff[t.dataset.staff] = t.checked; saveS();
+    if (mySession()) update(ref(db, 'pc/current'), { staff: staffList() }).catch(() => {});
+    setMsg('setupMsg', `Table ${t.dataset.staff} ${t.checked ? 'is now a staff table: it can play but won\'t be ranked' : 'is back in the competition'}.`, true);
+  }
   if (t.dataset.img !== undefined && t.files && t.files[0]) {
     try { const d = await shrink(t.files[0]); if (!setImg(+t.dataset.img, d)) setMsg('setupMsg', 'That picture is too large to store. Try a smaller image.', false); }
     catch (err) { setMsg('setupMsg', 'Could not read that image file.', false); }
@@ -414,7 +429,7 @@ $('printPins').onclick = () => {
   $('print').innerHTML = Array.from({ length: S.nTables }, (_, k) => k + 1).map(t => `<div class="pcard">
       <div><div class="k">Game 01 · Picture This</div><div class="tn">Table ${t}</div></div>
       <div><div class="pl">Your table PIN</div><div class="pn">${esc(S.pins[t])}</div></div>
-      <div class="hint">Scan the QR code on screen, choose Table ${t} and enter this PIN. Each table gets one entry, so agree on your answers first.</div></div>`).join('');
+      <div class="hint">${isStaff(t) ? 'Staff table: you are playing for fun and won\'t appear on the leaderboard. ' : ''}Scan the QR code on screen, choose Table ${t} and enter this PIN. Each table gets one entry, so agree on your answers first.</div></div>`).join('');
   window.print();
 };
 function setMsg(id, t, ok){ $(id).textContent = t; $(id).className = 'msg' + (ok ? ' ok' : ''); }
@@ -453,22 +468,31 @@ $('newSession').onclick = async () => {
   if (cur && cur.sid && Date.now() - armed > 4000) { armed = Date.now(); $('newSession').textContent = 'Click again to clear and restart'; setTimeout(() => { $('newSession').textContent = 'Start a fresh round'; }, 4000); return; }
   armed = 0; $('newSession').textContent = 'Start a fresh round';
   const sid = String(Date.now());
+  let stepName = 'save the table PINs';
   try {
     const pins = {}; for (let t = 1; t <= S.nTables; t++) pins[t] = S.pins[t];
     await update(ref(db, `pc/sessions/${sid}/pins`), pins);
+    stepName = 'set up the amend and reset counters';
     const rels = {}; for (let t = 1; t <= S.nTables; t++) rels[t] = 0;
     await update(ref(db, `pc/sessions/${sid}/rel`), rels);
+    stepName = "send the pictures to guests' phones";
     await pushImgs(sid);
-    await set(ref(db, 'pc/current'), { sid, open: false, tables: S.nTables, mins: S.mins, qs: publicOpts(), qt: publicQs() });
+    stepName = 'publish the round';
+    await set(ref(db, 'pc/current'), { sid, open: false, tables: S.nTables, mins: S.mins, qs: publicOpts(), qt: publicQs(), staff: staffList() });
     S.sid = sid; saveS(); setMsg('setupMsg', 'Round ready. Open the live board when you are ready to start.', true);
     show('board'); renderBoard();
-  } catch (err) { setMsg('setupMsg', 'Could not reach Firebase: ' + err.message + '. Have you published the database rules?', false); }
+  } catch (err) {
+    const denied = /permission/i.test(err.message || err.code || '');
+    setMsg('setupMsg', denied
+      ? `Firebase refused to ${stepName}. The published database rules are probably out of date: paste the latest database.rules.json into Realtime Database → Rules and click Publish.`
+      : `Could not ${stepName}: ${err.message}. Check the laptop's internet connection.`, false);
+  }
 };
 $('pushOpts').onclick = async () => {
   if (!mySession()) { setMsg('setupMsg', 'Start a fresh round first.', false); return; }
   if (!validOpts()) return;
-  try { await pushImgs(cur.sid); await update(ref(db, 'pc/current'), { qs: publicOpts(), qt: publicQs(), mins: S.mins }); setMsg('setupMsg', 'Pictures, questions and options updated on everyone\'s phones.', true); }
-  catch (err) { setMsg('setupMsg', 'Could not update: ' + err.message, false); }
+  try { await pushImgs(cur.sid); await update(ref(db, 'pc/current'), { qs: publicOpts(), qt: publicQs(), mins: S.mins, staff: staffList() }); setMsg('setupMsg', 'Pictures, questions and options updated on everyone\'s phones.', true); }
+  catch (err) { setMsg('setupMsg', /permission/i.test(err.message || '') ? "Firebase refused the update. The published database rules are probably out of date: paste the latest database.rules.json into Realtime Database → Rules and click Publish." : 'Could not update: ' + err.message, false); }
 };
 $('toBoard').onclick = () => { if (!mySession()) { setMsg('setupMsg', 'Start a fresh round first.', false); return; } show('board'); renderBoard(); };
 
@@ -495,23 +519,26 @@ function renderBoard(){
   // arrival order
   const ver = t => (rel && rel[t]) || 0;
   const amending = t => subs[t] && (subs[t].v || 0) < ver(t);
-  const order = Object.keys(subs).filter(t => !amending(t)).sort((a, b) => subs[a].at - subs[b].at || a - b);
+  const order = Object.keys(subs).filter(t => !amending(t) && !isStaff(t)).sort((a, b) => subs[a].at - subs[b].at || a - b);
   const tag = t => t + ':' + (subs[t].v || 0);
-  const fresh = seen ? order.filter(t => !seen.has(tag(t))) : [];
-  seen = new Set(order.map(tag));
+  const arrived = Object.keys(subs).filter(t => !amending(t));
+  const fresh = seen ? arrived.filter(t => !seen.has(tag(t))) : [];
+  seen = new Set(arrived.map(tag));
   const ord = k => k === 1 ? '1st' : k === 2 ? '2nd' : k === 3 ? '3rd' : k + 'th';
   $('chips').style.setProperty('--nt', n);
   $('chips').innerHTML = Array.from({ length: n }, (_, k) => String(k + 1)).map(t => {
     const sb = subs[t], pos = order.indexOf(t), am = amending(t);
     const st = sb ? (cur.openedAt ? mmss(sb.at - cur.openedAt) : '✓') : 'Waiting…';
-    const answering = !sb && owner[t] && owner[t].gen === ver(t);
-    if (answering) return `<div class="chip claimed" data-reset="${t}" title="Click to reset Table ${t}'s answering phone"><div class="n">TABLE</div><div class="big">${t}</div><div class="st">Answering<span class="dots"></span></div></div>`;
-    if (am) return `<div class="chip amend"><span class="pos">Amending</span><div class="n">TABLE</div><div class="big">${t}</div><div class="st">Changing answers…</div></div>`;
-    return `<div class="chip ${sb ? 'in' : 'wait'}${fresh.includes(t) ? ' pop' : ''}"${sb ? ` data-amend="${t}" title="Click to let Table ${t} change their answers"` : ''}>${sb ? `<span class="pos">${ord(pos + 1)} in${sb.v ? ' · amended' : ''}</span>` : ''}
-      <div class="n">TABLE</div><div class="big">${t}</div><div class="st">${sb ? '✓ ' + st : st}</div></div>`;
+    const answering = !sb && owner[t] && owner[t].gen === ver(t), stf = isStaff(t), lbl = stf ? 'STAFF' : 'TABLE';
+    if (answering) return `<div class="chip claimed${stf ? ' staff' : ''}" data-reset="${t}" title="Click to reset Table ${t}'s answering phone"><div class="n">${lbl}</div><div class="big">${t}</div><div class="st">Answering<span class="dots"></span></div></div>`;
+    if (am) return `<div class="chip amend${stf ? ' staff' : ''}"><span class="pos">Amending</span><div class="n">${lbl}</div><div class="big">${t}</div><div class="st">Changing answers…</div></div>`;
+    const badge = sb ? (stf ? `<span class="pos stafftag">Staff · for fun</span>` : `<span class="pos">${ord(pos + 1)} in${sb.v ? ' · amended' : ''}</span>`) : '';
+    return `<div class="chip ${sb ? 'in' : 'wait'}${stf ? ' staff' : ''}${fresh.includes(t) ? ' pop' : ''}"${sb ? ` data-amend="${t}" title="Click to let Table ${t} change their answers"` : ''}>${badge}
+      <div class="n">${lbl}</div><div class="big">${t}</div><div class="st">${sb ? '✓ ' + st : st}</div></div>`;
   }).join('');
-  $('count').innerHTML = got === n ? `<b>All ${n} tables</b> are in!` : `<b>${got}</b> of ${n} tables have submitted`;
-  if (fresh.length) { const t = fresh[fresh.length - 1]; toast(subs[t].v ? `Table ${t} has resubmitted!` : `Table ${t} is in!`); chime(order.indexOf(t)); }
+  const nComp = n - staffList().length, gotComp = order.length;
+  $('count').innerHTML = gotComp >= nComp && nComp > 0 ? `<b>All ${nComp} competing tables</b> are in!` : `<b>${gotComp}</b> of ${nComp} competing tables have submitted`;
+  if (fresh.length) { const t = fresh[fresh.length - 1]; const who = isStaff(t) ? `Staff table ${t}` : `Table ${t}`; toast(subs[t].v ? `${who} has resubmitted!` : `${who} is in!`); chime(isStaff(t) ? 0 : order.indexOf(t)); }
   if (qrDrawn !== joinURL()) {
     qrDrawn = joinURL(); $('qrM').innerHTML = '';
     try { new QRCode($('qrM'), { text: joinURL(), width: 120, height: 120, colorDark: '#0F1B2D', colorLight: '#FFFFFF', correctLevel: QRCode.CorrectLevel.M }); } catch (e) { $('qrM').textContent = 'QR'; }
@@ -594,7 +621,7 @@ $('amendYes').onclick = async () => {
 };
 
 // ---------- results ----------
-let ranked = [], revealed = 0, lastAns = {}, lastHist = {};
+let ranked = [], staffRows = [], revealed = 0, lastAns = {}, lastHist = {};
 const ord = n2 => n2 === 1 ? '1st' : n2 === 2 ? '2nd' : n2 === 3 ? '3rd' : n2 + 'th';
 const exact = ms => { const d = new Date(ms); return d.toLocaleTimeString('en-SG', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0'); };
 const secs = ms => (ms / 1000).toFixed(1) + 's';
@@ -628,7 +655,9 @@ function computeRanked(){
 }
 function buildResults(){
   const key = S.pics.map(p => p.ans);
-  ranked = computeRanked();
+  const all = computeRanked();
+  ranked = all.filter(r => !isStaff(r.t));                 // leaderboard: competing tables only
+  staffRows = all.filter(r => isStaff(r.t));               // staff tables: kept for the record, never ranked
   $('key').innerHTML = S.pics.map((p, i) => `<div><b>Picture ${i + 1}</b>${esc(p.ans)}. ${esc(p.opts[LETTERS.indexOf(p.ans)])}</div>`).join('');
   applyVeil();
 }
@@ -636,12 +665,13 @@ const optText = (i, l) => { const p = S.pics[i]; const k = LETTERS.indexOf(l); r
 function renderEntries(){
   const np = S.pics.length, n = cur.tables || S.nTables;
   const place = {}; ranked.forEach((r, i) => { if (!r.none) place[r.t] = i + 1; });
-  const byT = {}; ranked.forEach(r => { byT[r.t] = r; });
+  const byT = {}; ranked.concat(staffRows).forEach(r => { byT[r.t] = r; });
   $('ehead').innerHTML = `<tr><th>Table</th>${S.pics.map((_, i) => `<th>Picture ${i + 1}</th>`).join('')}<th>Score</th><th>Place</th><th>Submitted at</th><th>Time taken</th></tr>`;
   const keyRow = `<tr class="keyrow"><td>Correct</td>${S.pics.map((p, i) => `<td><div class="cell"><span class="lt">${esc(p.ans)}</span><span class="tx">${esc(optText(i, p.ans))}</span></div></td>`).join('')}<td></td><td></td><td></td><td></td></tr>`;
   const rows = Array.from({ length: n }, (_, k) => k + 1).map(t => {
     const r = byT[t];
-    if (!r || r.none) return `<tr class="none"><td>Table ${t}</td>${S.pics.map(() => '<td></td>').join('')}<td class="mono">–</td><td class="mono">–</td><td class="mono">No entry</td><td class="mono"></td></tr>`;
+    const nm = isStaff(t) ? `Table ${t}<div class="histline" style="color:var(--muted)">STAFF · NOT RANKED</div>` : `Table ${t}`;
+    if (!r || r.none) return `<tr class="none"><td>${nm}</td>${S.pics.map(() => '<td></td>').join('')}<td class="mono">–</td><td class="mono">–</td><td class="mono">No entry</td><td class="mono"></td></tr>`;
     const cells = S.pics.map((_, i) => {
       const l = r.a[i] || '-', cls = r.right[i] ? 'ok' : r.acc[i] ? 'acc' : 'no';
       const tag = r.right[i] ? 'div' : 'button type="button"';
@@ -650,7 +680,7 @@ function renderEntries(){
     }).join('');
     const hl = r.prev.map(x => `<div class="histline">Earlier: ${S.pics.map((_, i) => esc((x.a && x.a[i]) || '-')).join(' ')} at ${exact(x.at)}</div>`).join('')
       + (r.pending ? '<div class="histline">Reopened, no resubmission: earlier answers stand</div>' : '');
-    return `<tr><td>Table ${t}${hl}</td>${cells}<td class="mono"><b>${r.score} / ${np}</b></td><td class="mono"><b>${ord(place[t])}</b></td><td class="mono">${exact(r.at)}</td><td class="mono">${secs(r.ms)}</td></tr>`;
+    return `<tr><td>${nm}${hl}</td>${cells}<td class="mono"><b>${r.score} / ${np}</b></td><td class="mono"><b>${isStaff(t) ? 'Staff' : ord(place[t])}</b></td><td class="mono">${exact(r.at)}</td><td class="mono">${secs(r.ms)}</td></tr>`;
   }).join('');
   $('erows').innerHTML = keyRow + rows;
 }
@@ -670,10 +700,11 @@ function csv(){
   S.pics.forEach((p, i) => head.push(`Picture ${i + 1} answer`, `Picture ${i + 1} option`, `Picture ${i + 1} result`));
   const lines = [head.map(q).join(',')];
   lines.push(['', 'Correct answers', '', '', '', '', '', ''].concat(...S.pics.map((p, i) => [p.ans, optText(i, p.ans), ''])).map(q).join(','));
-  ranked.forEach((r, k) => {
-    if (r.none) { lines.push(['', `Table ${r.t}`, '', '', '', 'No entry', '', ''].concat(...S.pics.map(() => ['', '', ''])).map(q).join(',')); return; }
+  ranked.concat(staffRows).forEach((r, k) => {
+    const stf = isStaff(r.t);
+    if (r.none) { lines.push([stf ? 'Staff (not ranked)' : '', `Table ${r.t}`, '', '', '', 'No entry', '', ''].concat(...S.pics.map(() => ['', '', ''])).map(q).join(',')); return; }
     const amendTxt = r.prev.map(x => `Earlier: ${S.pics.map((_, i) => (x.a && x.a[i]) || '-').join(' ')} at ${exact(x.at)}`).concat(r.pending ? ['Reopened, no resubmission'] : []).join('; ');
-    const row = [ord(k + 1), `Table ${r.t}`, r.score, np, txt(day(r.at)), txt(exact(r.at)), (r.ms / 1000).toFixed(3), amendTxt];
+    const row = [stf ? 'Staff (not ranked)' : ord(k + 1), `Table ${r.t}`, r.score, np, txt(day(r.at)), txt(exact(r.at)), (r.ms / 1000).toFixed(3), amendTxt];
     S.pics.forEach((p, i) => row.push(r.a[i] || '', optText(i, r.a[i]), r.right[i] ? 'Correct' : r.acc[i] ? 'Accepted by host' : 'Wrong'));
     lines.push(row.map(q).join(','));
   });

@@ -224,12 +224,17 @@ function tick(){
 setInterval(tick, 500);
 
 const ver = t => (rel && rel[t]) || 0;
+const isStaffT = t => !!(cur && Array.isArray(cur.staff) && cur.staff.map(Number).includes(+t));
 const isIn = t => !!(subs[t] && (subs[t].v || 0) >= ver(t));         // has a current, final entry
 const isReopened = t => !!(subs[t] && (subs[t].v || 0) < ver(t));     // host let this table amend
 const holds = t => !!(claim && claim.t === t && claim.gen === ver(t));               // this phone is the table's answering phone
 const ownerActive = t => !!(owner[t] && owner[t].gen === ver(t));
 const takenByOther = t => ownerActive(t) && !holds(t);
-function show(id){ for (const s of ['sWait','sTable','sPin','sQuiz','sConfirm','sDone','sLocked','sAmend','sBusy','sReclaim']) $(s).classList.toggle('hidden', s !== id); window.scrollTo(0, 0); }
+let shown = '';
+function show(id){
+  for (const s of ['sWait','sTable','sPin','sQuiz','sConfirm','sDone','sLocked','sAmend','sBusy','sReclaim']) $(s).classList.toggle('hidden', s !== id);
+  if (id !== shown) { shown = id; window.scrollTo(0, 0); }      // only jump to the top when a different screen opens
+}
 function qList(){ return (cur && cur.qs) ? cur.qs : []; }
 const qTitle = i => (cur && cur.qt && cur.qt[i]) || `Picture ${i + 1}`;
 function allAnswered(){ const n = qList().length; return n > 0 && qList().every((q, i) => answers[i]); }
@@ -258,7 +263,7 @@ function render(){
   }
   if (step === 'done' && mine) {
     $('doneTitle').textContent = mine.v ? `Table ${mine.table}, your new answers are in!` : `Table ${mine.table}, you're in!`;
-    $('doneSub').textContent = `Submitted at ${fmtTime(mine.at || Date.now())}. Here's what you sent:`;
+    $('doneSub').textContent = (isStaffT(mine.table) ? "You're our staff table, so you're playing just for fun and won't appear on the leaderboard. " : '') + `Submitted at ${fmtTime(mine.at || Date.now())}. Here's what you sent:`;
     $('doneSummary').innerHTML = summaryHTML(mine.answers);
     show('sDone'); return;
   }
@@ -270,7 +275,7 @@ function render(){
   if (step === 'table') {
     $('tables').innerHTML = Array.from({ length: tables }, (_, k) => k + 1).map(t => {
       const d = isIn(t), r = isReopened(t), a = !d && takenByOther(t);
-      return `<button class="tbl${d ? ' done' : ''}" type="button" data-t="${t}"><b>${t}</b><small>${d ? '✓ Submitted' : r ? 'Reopened by host' : a ? 'Answering…' : 'Tap to choose'}</small></button>`;
+      return `<button class="tbl${d ? ' done' : ''}" type="button" data-t="${t}"><b>${t}</b><small>${d ? '✓ Submitted' : r ? 'Reopened by host' : a ? 'Answering…' : isStaffT(t) ? 'Staff table' : 'Tap to choose'}</small></button>`;
     }).join('');
     show('sTable'); return;
   }
@@ -280,7 +285,7 @@ function render(){
     show('sPin'); setTimeout(() => $('pin').focus(), 50); return;
   }
   if (step === 'quiz') {
-    $('quizLabel').textContent = `Table ${table}`;
+    $('quizLabel').textContent = isStaffT(table) ? `Table ${table} · Staff, playing for fun` : `Table ${table}`;
     const sig = JSON.stringify([qList(), cur.qt || [], imgs.map(x => (x || '').length)]);
     if (sig !== quizSig || !$('qs').children.length) {
       quizSig = sig;
