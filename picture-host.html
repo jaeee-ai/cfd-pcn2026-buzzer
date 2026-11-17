@@ -125,8 +125,18 @@
   #rtable tr.first td:first-child,#rtable tr.first td:last-child,#rtable tr.first td.sc{color:var(--navy)}
   #rtable tr.first .ok,#rtable tr.first .no{color:var(--navy)}
   #rtable tr.none td{opacity:.45}
-  #rtable tr.veil td{color:transparent !important;background:var(--panel) !important;border-color:var(--line) !important}
-  #rtable tr.veil td *{visibility:hidden}
+  #rtable tr.veil td{background:transparent;border-top-style:dashed;border-bottom-style:dashed;border-color:#3A5578;color:#5F7190}
+  #rtable tr.veil td:first-child{border-left-style:dashed}
+  #rtable tr.veil td:last-child{border-right-style:dashed}
+  #rtable tr.veil td:first-child{color:var(--gold);opacity:.7}
+  #rtable tr.veil.next td{border-color:var(--gold);cursor:pointer;background:rgba(232,184,74,.06)}
+  #rtable tr.veil.next td:first-child{opacity:1}
+  #rtable tr.veil.next:hover td{background:rgba(232,184,74,.12)}
+  .nexthint{font-family:var(--mono);color:var(--gold);font-size:clamp(13px,1.1vw,17px);animation:breath 2.4s ease-in-out infinite}
+  #rtable tr.justin td{animation:flipin .6s ease-out}
+  @keyframes flipin{0%{transform:scaleY(.2);opacity:0}100%{transform:none;opacity:1}}
+  #revealHint{font-family:var(--mono);color:var(--muted);font-size:clamp(14px,1.2vw,18px);text-align:center}
+  #revealHint b{color:var(--gold)}
   #entries{display:flex;flex-direction:column;align-items:center;padding:5vh 4vw;gap:2.4vh}
   #entries h1{font-size:clamp(32px,3.6vw,60px);margin:6px 0 0;font-weight:800;text-align:center}
   #entries .sub{color:var(--muted);text-align:center;font-size:clamp(14px,1.2vw,18px);margin:6px 0 0}
@@ -193,7 +203,7 @@
     </div>
 
     <h3>Pictures, questions and answer options</h3>
-    <p>Choose the image for each picture: it shows on the live board while tables answer. Leave option D blank if a picture only has three choices. Pick the correct letter on the right.</p>
+    <p>Choose the image for each picture: it shows on the live board and on guests' phones. Leave option D blank if a picture only has three choices. Pick the correct letter on the right.</p>
     <div id="pics"></div>
 
     <h3>Table PINs</h3>
@@ -209,7 +219,7 @@
     <div class="msg" id="setupMsg" role="status"></div>
     <div class="row" style="margin:14px 0 6vh">
       <button class="btn primary" id="newSession" type="button">Start a fresh round</button>
-      <button class="btn ghost" id="pushOpts" type="button">Update questions on phones</button>
+      <button class="btn ghost" id="pushOpts" type="button">Update phones</button>
       <button class="btn ghost" id="toBoard" type="button">Go to the live board</button>
     </div>
   </div>
@@ -245,6 +255,7 @@
 <section id="results" class="screen hidden">
   <div style="text-align:center"><div class="label">Game 01 · Picture This</div><h1>Results</h1></div>
   <table id="rtable"><thead><tr><th>Place</th><th>Table</th><th>Score</th><th>Pictures</th><th style="text-align:right">Time</th></tr></thead><tbody id="rrows"></tbody></table>
+  <div id="revealHint"></div>
   <div id="key" class="hidden"></div>
   <div class="msg" id="resMsg" role="status"></div>
   <div class="help"><kbd>Space</kbd> reveal next place · <kbd>V</kbd> reveal all · <kbd>A</kbd> show answers · <kbd>E</kbd> entries &amp; disputes · <kbd>B</kbd> back to board · <kbd>H</kbd> hide help · <kbd>F</kbd> fullscreen</div>
@@ -422,6 +433,18 @@ function validOpts(){
   return true;
 }
 const publicOpts = () => S.pics.map(p => p.opts.map(o => o.trim()));   // options only, never the answer key
+// Phone-sized copies of the pictures (about 720px wide) so they load quickly on mobile data
+function phoneImg(data){
+  return new Promise(res => {
+    if (!data) return res('');
+    const im = new Image();
+    im.onload = () => { const sc = Math.min(1, 720 / im.width), c = document.createElement('canvas');
+      c.width = Math.round(im.width * sc); c.height = Math.round(im.height * sc);
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', 0.78)); };
+    im.onerror = () => res(''); im.src = data;
+  });
+}
+async function pushImgs(sid){ const out = []; for (let i = 0; i < S.nPics; i++) out.push(await phoneImg(IMG[i])); await set(ref(db, `pc/imgs/${sid}`), out); }
 const publicQs = () => S.pics.map((p, i) => (p.q || '').trim() || `Picture ${i + 1}`);
 
 let armed = 0;
@@ -435,6 +458,7 @@ $('newSession').onclick = async () => {
     await update(ref(db, `pc/sessions/${sid}/pins`), pins);
     const rels = {}; for (let t = 1; t <= S.nTables; t++) rels[t] = 0;
     await update(ref(db, `pc/sessions/${sid}/rel`), rels);
+    await pushImgs(sid);
     await set(ref(db, 'pc/current'), { sid, open: false, tables: S.nTables, mins: S.mins, qs: publicOpts(), qt: publicQs() });
     S.sid = sid; saveS(); setMsg('setupMsg', 'Round ready. Open the live board when you are ready to start.', true);
     show('board'); renderBoard();
@@ -443,7 +467,7 @@ $('newSession').onclick = async () => {
 $('pushOpts').onclick = async () => {
   if (!mySession()) { setMsg('setupMsg', 'Start a fresh round first.', false); return; }
   if (!validOpts()) return;
-  try { await update(ref(db, 'pc/current'), { qs: publicOpts(), qt: publicQs(), mins: S.mins }); setMsg('setupMsg', 'Questions and options updated on everyone\'s phones.', true); }
+  try { await pushImgs(cur.sid); await update(ref(db, 'pc/current'), { qs: publicOpts(), qt: publicQs(), mins: S.mins }); setMsg('setupMsg', 'Pictures, questions and options updated on everyone\'s phones.', true); }
   catch (err) { setMsg('setupMsg', 'Could not update: ' + err.message, false); }
 };
 $('toBoard').onclick = () => { if (!mySession()) { setMsg('setupMsg', 'Start a fresh round first.', false); return; } show('board'); renderBoard(); };
@@ -574,6 +598,7 @@ let ranked = [], revealed = 0, lastAns = {}, lastHist = {};
 const ord = n2 => n2 === 1 ? '1st' : n2 === 2 ? '2nd' : n2 === 3 ? '3rd' : n2 + 'th';
 const exact = ms => { const d = new Date(ms); return d.toLocaleTimeString('en-SG', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0'); };
 const secs = ms => (ms / 1000).toFixed(1) + 's';
+const mmssT = ms => { const t = Math.max(0, Math.round(ms / 100)); return `${Math.floor(t / 600)}:${String(Math.floor(t / 10) % 60).padStart(2, '0')}.${t % 10}`; };
 function overrides(){ S.overrides = S.overrides || {}; return (S.overrides[cur.sid] = S.overrides[cur.sid] || {}); }
 const isAcc = (t, i) => !!(overrides()[t] && overrides()[t][i]);
 async function showResults(){
@@ -604,10 +629,6 @@ function computeRanked(){
 function buildResults(){
   const key = S.pics.map(p => p.ans);
   ranked = computeRanked();
-  $('rrows').innerHTML = ranked.map((r, i) => r.none
-    ? `<tr class="none" data-i="${i}"><td>–</td><td class="tb">Table ${r.t}</td><td class="sc">–</td><td class="marks"></td><td>No entry</td></tr>`
-    : `<tr class="${i === 0 ? 'first' : ''}" data-i="${i}"><td>${ord(i + 1)}</td><td class="tb">Table ${r.t}</td><td class="sc">${r.score} / ${key.length}</td>
-       <td class="marks">${r.marks.map(m => `<span class="${m ? 'ok' : 'no'}">${m ? '✓' : '✗'}</span>`).join('')}</td><td>${mmss(r.ms)}</td></tr>`).join('');
   $('key').innerHTML = S.pics.map((p, i) => `<div><b>Picture ${i + 1}</b>${esc(p.ans)}. ${esc(p.opts[LETTERS.indexOf(p.ans)])}</div>`).join('');
   applyVeil();
 }
@@ -643,14 +664,16 @@ document.addEventListener('click', e => {
 });
 function csv(){
   const np = S.pics.length, q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const head = ['Place', 'Table', 'Score', 'Submitted at (server time)', 'Time taken (s)', 'Amendments'];
+  const txt = v => `="${v}"`;            // keeps Excel from turning dates/times into numbers
+  const day = ms => new Date(ms).toLocaleDateString('en-SG', { day: 'numeric', month: 'short', year: 'numeric' });
+  const head = ['Place', 'Table', 'Score', 'Out of', 'Date', 'Submitted at (server time)', 'Time taken (s)', 'Amendments'];
   S.pics.forEach((p, i) => head.push(`Picture ${i + 1} answer`, `Picture ${i + 1} option`, `Picture ${i + 1} result`));
   const lines = [head.map(q).join(',')];
-  lines.push(['', 'Correct answers', '', '', '', ''].concat(...S.pics.map((p, i) => [p.ans, optText(i, p.ans), ''])).map(q).join(','));
+  lines.push(['', 'Correct answers', '', '', '', '', '', ''].concat(...S.pics.map((p, i) => [p.ans, optText(i, p.ans), ''])).map(q).join(','));
   ranked.forEach((r, k) => {
-    if (r.none) { lines.push(['', `Table ${r.t}`, '', 'No entry', '', ''].concat(...S.pics.map(() => ['', '', ''])).map(q).join(',')); return; }
+    if (r.none) { lines.push(['', `Table ${r.t}`, '', '', '', 'No entry', '', ''].concat(...S.pics.map(() => ['', '', ''])).map(q).join(',')); return; }
     const amendTxt = r.prev.map(x => `Earlier: ${S.pics.map((_, i) => (x.a && x.a[i]) || '-').join(' ')} at ${exact(x.at)}`).concat(r.pending ? ['Reopened, no resubmission'] : []).join('; ');
-    const row = [ord(k + 1), `Table ${r.t}`, `${r.score}/${np}`, new Date(r.at).toLocaleDateString('en-SG') + ' ' + exact(r.at), (r.ms / 1000).toFixed(3), amendTxt];
+    const row = [ord(k + 1), `Table ${r.t}`, r.score, np, txt(day(r.at)), txt(exact(r.at)), (r.ms / 1000).toFixed(3), amendTxt];
     S.pics.forEach((p, i) => row.push(r.a[i] || '', optText(i, r.a[i]), r.right[i] ? 'Correct' : r.acc[i] ? 'Accepted by host' : 'Wrong'));
     lines.push(row.map(q).join(','));
   });
@@ -662,13 +685,31 @@ function csv(){
 }
 $('csvBtn').onclick = csv;
 $('backRes').onclick = () => { show('results'); };
-function applyVeil(){
-  const entries = ranked.filter(r => !r.none).length;
-  document.querySelectorAll('#rrows tr').forEach(tr => {
-    const i = +tr.dataset.i, hidden = i < entries && i < entries - revealed;   // reveal from last place up to 1st
-    tr.classList.toggle('veil', hidden);
-  });
+// Places are revealed from last to 1st. Hidden places show as dashed rows; the next one to reveal is highlighted.
+function applyVeil(justIdx){
+  const key = S.pics.map(p => p.ans), entries = ranked.filter(r => !r.none).length;
+  const firstShown = entries - revealed;                       // rows with index >= firstShown are revealed
+  $('rrows').innerHTML = ranked.map((r, i) => {
+    if (r.none) return `<tr class="none" data-i="${i}"><td>–</td><td class="tb">Table ${r.t}</td><td class="sc">–</td><td class="marks"></td><td>No entry</td></tr>`;
+    if (i < firstShown) {
+      const next = i === firstShown - 1;
+      return `<tr class="veil${next ? ' next' : ''}" data-i="${i}"${next ? ' data-reveal="1" title="Click to reveal"' : ''}><td>${ord(i + 1)}</td>
+        <td class="tb">${next ? 'Who is it?' : '?'}</td><td class="sc">?</td><td class="marks"></td><td>${next ? '<span class="nexthint">Click or press Space</span>' : ''}</td></tr>`;
+    }
+    return `<tr class="${i === 0 ? 'first' : ''}${i === justIdx ? ' justin' : ''}" data-i="${i}"><td>${ord(i + 1)}</td><td class="tb">Table ${r.t}</td><td class="sc">${r.score} / ${key.length}</td>
+       <td class="marks">${r.marks.map(m => `<span class="${m ? 'ok' : 'no'}">${m ? '✓' : '✗'}</span>`).join('')}</td><td>${mmssT(r.ms)}</td></tr>`;
+  }).join('');
+  const left = Math.max(0, firstShown);
+  $('revealHint').innerHTML = !entries ? 'No table submitted an entry.'
+    : left ? `<b>${left}</b> ${left === 1 ? 'place' : 'places'} to reveal · press <b>Space</b> or click the gold row · <b>V</b> reveals all`
+    : 'All places revealed · press <b>A</b> for the correct answers · <b>E</b> for every entry';
 }
+function revealNext(){
+  const entries = ranked.filter(r => !r.none).length; if (revealed >= entries) return;
+  revealed++; const idx = entries - revealed; applyVeil(idx);
+  if (idx === 0) { [0, 3, 6].forEach((k, j) => setTimeout(() => chime(k), j * 160)); } else chime(1);
+}
+document.addEventListener('click', e => { if (view === 'results' && e.target.closest('[data-reveal]')) revealNext(); });
 
 // ---------- QR ----------
 const joinURL = () => new URL('picture.html', location.href).href;
@@ -695,7 +736,7 @@ document.addEventListener('keydown', e => {
     else if (e.code === 'Escape') { show('setup'); renderSetup(); }
   } else if (view === 'results') {
     const entries = ranked.filter(r => !r.none).length;
-    if (e.code === 'Space') { e.preventDefault(); revealed = Math.min(entries, revealed + 1); applyVeil(); }
+    if (e.code === 'Space') { e.preventDefault(); revealNext(); }
     else if (e.code === 'KeyV') { revealed = entries; applyVeil(); }
     else if (e.code === 'KeyA') $('key').classList.toggle('hidden');
     else if (e.code === 'KeyE') showEntries();
