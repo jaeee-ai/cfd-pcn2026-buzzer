@@ -79,6 +79,10 @@
   @keyframes pop{0%{transform:scale(1)}25%{transform:scale(1.14);box-shadow:0 0 60px rgba(107,196,138,.85)}100%{transform:scale(1)}}
   .chip.wait{opacity:.8}
   .chip.in{cursor:pointer}
+  .chip.claimed{cursor:pointer;border-color:#4A6A93;opacity:1}
+  .chip.claimed .st{color:var(--cream)}
+  .chip.claimed .dots::after{content:'';animation:dots 1.4s steps(4) infinite}
+  @keyframes dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
   .chip.amend{background:#2B2410;border-color:var(--gold);box-shadow:0 0 24px rgba(232,184,74,.25)}
   .chip.amend .st,.chip.amend .n{color:var(--gold)}
   #amendDlg{position:fixed;inset:0;background:rgba(15,27,45,.85);display:flex;align-items:center;justify-content:center;z-index:6}
@@ -96,6 +100,7 @@
   .ctl{transition:opacity .5s}
   #controls{position:fixed;left:0;right:0;bottom:0;padding:18px 4vw 14px;display:flex;flex-direction:column;gap:8px;background:var(--panel);border-top:1px solid var(--line);z-index:3}
   body.idle .ctl{opacity:0;pointer-events:none}
+  body.forcehide .ctl,body.forcehide #results .help,body.forcehide #entries .help{opacity:0;pointer-events:none}
   body.idle{cursor:none}
   .imgrow{display:flex;align-items:center;gap:12px;margin-top:12px;color:var(--muted);font-size:14px}
   .imgrow img{height:64px;border-radius:8px;border:1px solid var(--line)}
@@ -231,7 +236,7 @@
     <button class="btn ghost" id="setupBtn" type="button">Setup</button>
   </div>
   <div class="msg" id="boardMsg" role="status" style="text-align:center"></div>
-  <div class="help"><kbd>O</kbd> open · <kbd>C</kbd> close · <kbd>R</kbd> results · <kbd>Q</kbd> big QR · <kbd>F</kbd> fullscreen · <kbd>Esc</kbd> setup · click a submitted table to let it amend · controls hide when the mouse is still</div>
+  <div class="help"><kbd>O</kbd> open · <kbd>C</kbd> close · <kbd>R</kbd> results · <kbd>Q</kbd> big QR · <kbd>F</kbd> fullscreen · <kbd>H</kbd> hide/show controls · <kbd>Esc</kbd> setup · click a table to reset its phone or let it amend · controls hide when the mouse is still</div>
   </div>
   <div id="toast"></div>
 </main>
@@ -242,7 +247,7 @@
   <table id="rtable"><thead><tr><th>Place</th><th>Table</th><th>Score</th><th>Pictures</th><th style="text-align:right">Time</th></tr></thead><tbody id="rrows"></tbody></table>
   <div id="key" class="hidden"></div>
   <div class="msg" id="resMsg" role="status"></div>
-  <div class="help"><kbd>Space</kbd> reveal next place · <kbd>V</kbd> reveal all · <kbd>A</kbd> show answers · <kbd>E</kbd> entries &amp; disputes · <kbd>B</kbd> back to board · <kbd>F</kbd> fullscreen</div>
+  <div class="help"><kbd>Space</kbd> reveal next place · <kbd>V</kbd> reveal all · <kbd>A</kbd> show answers · <kbd>E</kbd> entries &amp; disputes · <kbd>B</kbd> back to board · <kbd>H</kbd> hide help · <kbd>F</kbd> fullscreen</div>
 </section>
 
 <!-- ENTRIES (for checking answers and resolving disputes) -->
@@ -255,7 +260,7 @@
     <button class="btn ghost" id="backRes" type="button">Back to results</button>
   </div>
   <div class="msg" id="entMsg" role="status" style="text-align:center"></div>
-  <div class="help"><kbd>B</kbd> back to results · <kbd>F</kbd> fullscreen</div>
+  <div class="help"><kbd>B</kbd> back to results · <kbd>H</kbd> hide help · <kbd>F</kbd> fullscreen</div>
 </section>
 
 <div id="qrOverlay" class="hidden">
@@ -331,7 +336,7 @@ function randPin(){
 // ---------- Firebase ----------
 const cfg = window.FIREBASE_CONFIG || {};
 const db = getDatabase(initializeApp(cfg));
-let offset = 0, cur = null, subs = {}, rel = {}, unsubSubs = null, unsubRel = null, subsSid = null;
+let offset = 0, cur = null, subs = {}, rel = {}, owner = {}, unsubSubs = null, unsubRel = null, unsubOwner = null, subsSid = null;
 const now = () => Date.now() + offset;
 onValue(ref(db, '.info/serverTimeOffset'), s => { offset = s.val() || 0; });
 onValue(ref(db, '.info/connected'), s => { const on = !!s.val(); $('net').classList.toggle('on', on); $('netTxt').textContent = on ? 'Online' : 'Offline: reconnecting…'; });
@@ -339,10 +344,11 @@ onValue(ref(db, 'pc/current'), s => {
   cur = s.val();
   const sid = cur && cur.sid ? String(cur.sid) : null;
   if (sid !== subsSid) {
-    if (unsubSubs) unsubSubs(); if (unsubRel) unsubRel(); subs = {}; rel = {}; subsSid = sid; unsubSubs = null; unsubRel = null;
+    if (unsubSubs) unsubSubs(); if (unsubRel) unsubRel(); if (unsubOwner) unsubOwner(); subs = {}; rel = {}; owner = {}; subsSid = sid; unsubSubs = null; unsubRel = null; unsubOwner = null;
     if (sid) {
       unsubSubs = onValue(ref(db, `pc/sessions/${sid}/subs`), x => { subs = x.val() || {}; renderBoard(); });
       unsubRel = onValue(ref(db, `pc/sessions/${sid}/rel`), x => { rel = x.val() || {}; renderBoard(); });
+      unsubOwner = onValue(ref(db, `pc/sessions/${sid}/owner`), x => { owner = x.val() || {}; renderBoard(); });
     }
   }
   renderStatus(); renderBoard();
@@ -474,6 +480,8 @@ function renderBoard(){
   $('chips').innerHTML = Array.from({ length: n }, (_, k) => String(k + 1)).map(t => {
     const sb = subs[t], pos = order.indexOf(t), am = amending(t);
     const st = sb ? (cur.openedAt ? mmss(sb.at - cur.openedAt) : '✓') : 'Waiting…';
+    const answering = !sb && owner[t] && owner[t].gen === ver(t);
+    if (answering) return `<div class="chip claimed" data-reset="${t}" title="Click to reset Table ${t}'s answering phone"><div class="n">TABLE</div><div class="big">${t}</div><div class="st">Answering<span class="dots"></span></div></div>`;
     if (am) return `<div class="chip amend"><span class="pos">Amending</span><div class="n">TABLE</div><div class="big">${t}</div><div class="st">Changing answers…</div></div>`;
     return `<div class="chip ${sb ? 'in' : 'wait'}${fresh.includes(t) ? ' pop' : ''}"${sb ? ` data-amend="${t}" title="Click to let Table ${t} change their answers"` : ''}>${sb ? `<span class="pos">${ord(pos + 1)} in${sb.v ? ' · amended' : ''}</span>` : ''}
       <div class="n">TABLE</div><div class="big">${t}</div><div class="st">${sb ? '✓ ' + st : st}</div></div>`;
@@ -534,9 +542,18 @@ $('setupBtn').onclick = () => { show('setup'); renderSetup(); };
 $('qrBtn').onclick = toggleQR;
 
 // ---------- amendments ----------
-let amendT = null;
+let amendT = null, dlgMode = 'amend';
 document.addEventListener('click', e => {
+  const r = e.target.closest('[data-reset]');
+  if (r && view === 'board') {
+    amendT = r.dataset.reset; dlgMode = 'reset';
+    $('amendTitle').textContent = `Reset Table ${amendT}'s answering phone?`;
+    $('amendText').textContent = `Use this if the phone answering for Table ${amendT} has a problem, or its owner has left the table. Any phone at the table can then take over with the PIN. Answers picked on the old phone don't carry over.`;
+    $('amendYes').textContent = 'Reset';
+    $('amendDlg').classList.remove('hidden'); return;
+  }
   const c = e.target.closest('[data-amend]'); if (!c || view !== 'board') return;
+  dlgMode = 'amend'; $('amendYes').textContent = 'Allow';
   if (phase() !== 'open') { setMsg('boardMsg', 'Tables can only amend while submissions are open. Reopen the round first if you need to.', false); return; }
   amendT = c.dataset.amend;
   $('amendTitle').textContent = `Let Table ${amendT} change their answers?`;
@@ -546,8 +563,10 @@ document.addEventListener('click', e => {
 $('amendNo').onclick = () => { $('amendDlg').classList.add('hidden'); amendT = null; };
 $('amendYes').onclick = async () => {
   const t = amendT; $('amendDlg').classList.add('hidden'); amendT = null; if (!t) return;
-  try { await set(ref(db, `pc/sessions/${cur.sid}/rel/${t}`), ((rel && rel[t]) || 0) + 1); setMsg('boardMsg', `Table ${t} can now change their answers.`, true); }
-  catch (err) { setMsg('boardMsg', 'Could not reopen that table: ' + err.message, false); }
+  try {
+    await set(ref(db, `pc/sessions/${cur.sid}/rel/${t}`), ((rel && rel[t]) || 0) + 1);
+    setMsg('boardMsg', dlgMode === 'reset' ? `Table ${t}'s phone was reset. Another phone at the table can take over with the PIN.` : `Table ${t} can now change their answers.`, true);
+  } catch (err) { setMsg('boardMsg', (dlgMode === 'reset' ? 'Could not reset that table: ' : 'Could not reopen that table: ') + err.message, false); }
 };
 
 // ---------- results ----------
@@ -668,6 +687,7 @@ document.addEventListener('keydown', e => {
   if (e.repeat || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
   if (e.code === 'KeyF') { fullscreen(); return; }
   if (e.code === 'KeyQ') { toggleQR(); return; }
+  if (e.code === 'KeyH' && view !== 'setup') { document.body.classList.toggle('forcehide'); return; }
   if (view === 'board') {
     if (e.code === 'KeyO') openRound();
     else if (e.code === 'KeyC') closeRound(false);

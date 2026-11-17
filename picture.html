@@ -75,7 +75,7 @@
 <section id="sPin" class="hidden">
   <div class="label" id="pinLabel"></div>
   <h1>Enter your table PIN</h1>
-  <p>You'll find the 4-digit PIN on the card at your table.</p>
+  <p>You'll find the 4-digit PIN on the card at your table. The first phone to enter it becomes your table's answering phone.</p>
   <input class="pin" id="pin" type="text" inputmode="numeric" autocomplete="off" maxlength="4" placeholder="····" aria-label="Table PIN">
   <div id="pinErr" role="alert" style="color:var(--red);font-size:15px;line-height:1.4;margin-top:12px"></div>
   <button class="btn primary" id="pinGo" type="button" disabled>Continue</button>
@@ -113,6 +113,24 @@
   <p style="margin-top:16px">Keep your eyes on the screen for the results. Need to change something while time is still running? Ask the host.</p>
 </section>
 
+<!-- another phone is answering for this table -->
+<section id="sBusy" class="hidden">
+  <div class="label">Game 01 · Picture This</div>
+  <div class="big" id="busyTable"></div>
+  <h1>Another phone is answering for your table</h1>
+  <p>Only one phone per table can submit. Agree your answers with whoever has it. If that phone has a problem, ask the host to reset it, and this page will let you take over.</p>
+  <button class="link" type="button" data-back="table">Picked the wrong table? Go back</button>
+</section>
+
+<!-- host reset this table's answering phone -->
+<section id="sReclaim" class="hidden">
+  <div class="label">Game 01 · Picture This</div>
+  <div class="big" id="reclaimTable"></div>
+  <h1>Your table's phone was reset</h1>
+  <p>The host has freed up your table so a phone can take over. Tap below to answer on this phone. The first phone to tap gets it.</p>
+  <button class="btn primary" id="reclaimGo" type="button">Answer on this phone</button>
+</section>
+
 <!-- host has reopened this table's entry -->
 <section id="sAmend" class="hidden">
   <div class="label">Game 01 · Picture This</div>
@@ -145,12 +163,13 @@ const cfg = window.FIREBASE_CONFIG || {};
 const db = getDatabase(initializeApp(cfg));
 
 let cur = null, subs = {}, rel = {}, offset = 0, unsubSubs = null, unsubRel = null, sid = null;
-let step = 'table', table = null, pin = '', answers = {}, mine = null, busy = false, pinErr = '';
+let step = 'table', table = null, pin = '', answers = {}, mine = null, busy = false, pinErr = '', tok = '', claim = null, owner = {}, unsubOwner = null, claiming = false;
+const newTok = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
 
 const fmtTime = ms => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
 const key = () => `picture-${sid}`;
 const load = () => { try { return JSON.parse(localStorage.getItem(key()) || 'null'); } catch (e) { return null; } };
-const save = () => { try { localStorage.setItem(key(), JSON.stringify({ table, pin, answers, mine })); } catch (e) {} };
+const save = () => { try { localStorage.setItem(key(), JSON.stringify({ table, pin, answers, mine, tok, claim })); } catch (e) {} };
 
 onValue(ref(db, '.info/serverTimeOffset'), s => { offset = s.val() || 0; });
 onValue(ref(db, '.info/connected'), s => { const on = !!s.val(); $('foot').classList.toggle('on', on); $('netTxt').textContent = on ? 'Connected' : 'Reconnecting…'; });
@@ -162,12 +181,16 @@ onValue(ref(db, 'pc/current'), s => {
     sid = newSid; subs = {}; rel = {};
     if (unsubSubs) { unsubSubs(); unsubSubs = null; }
     if (unsubRel) { unsubRel(); unsubRel = null; }
+    if (unsubOwner) { unsubOwner(); unsubOwner = null; }
+    owner = {};
     const st = sid ? load() : null;
     table = st?.table ?? null; pin = st?.pin || ''; answers = st?.answers || {}; mine = st?.mine || null;
-    step = mine ? 'done' : table ? (pin ? 'quiz' : 'pin') : 'table';
+    tok = st?.tok || newTok(); claim = st?.claim || null;
+    step = mine ? 'done' : table ? (claim && claim.t === table ? 'quiz' : 'pin') : 'table';
     if (sid) {
       unsubSubs = onValue(ref(db, `pc/sessions/${sid}/subs`), s2 => { subs = s2.val() || {}; render(); });
       unsubRel = onValue(ref(db, `pc/sessions/${sid}/rel`), s2 => { rel = s2.val() || {}; render(); });
+      unsubOwner = onValue(ref(db, `pc/sessions/${sid}/owner`), s2 => { owner = s2.val() || {}; render(); });
     }
   }
   render();
@@ -193,7 +216,10 @@ setInterval(tick, 500);
 const ver = t => (rel && rel[t]) || 0;
 const isIn = t => !!(subs[t] && (subs[t].v || 0) >= ver(t));         // has a current, final entry
 const isReopened = t => !!(subs[t] && (subs[t].v || 0) < ver(t));     // host let this table amend
-function show(id){ for (const s of ['sWait','sTable','sPin','sQuiz','sConfirm','sDone','sLocked','sAmend']) $(s).classList.toggle('hidden', s !== id); window.scrollTo(0, 0); }
+const holds = t => !!(claim && claim.t === t && claim.gen === ver(t));               // this phone is the table's answering phone
+const ownerActive = t => !!(owner[t] && owner[t].gen === ver(t));
+const takenByOther = t => ownerActive(t) && !holds(t);
+function show(id){ for (const s of ['sWait','sTable','sPin','sQuiz','sConfirm','sDone','sLocked','sAmend','sBusy','sReclaim']) $(s).classList.toggle('hidden', s !== id); window.scrollTo(0, 0); }
 function qList(){ return (cur && cur.qs) ? cur.qs : []; }
 const qTitle = i => (cur && cur.qt && cur.qt[i]) || `Picture ${i + 1}`;
 function allAnswered(){ const n = qList().length; return n > 0 && qList().every((q, i) => answers[i]); }
@@ -210,6 +236,12 @@ function render(){
   if (step === 'amend' && !isReopened(table)) step = mineCurrent ? 'done' : 'locked';
   // someone else at this table already has the current entry in
   if (table && isIn(table) && !(mine && (mine.v || 0) === (subs[table].v || 0)) && step !== 'done') step = 'locked';
+  // one phone per table: only the answering phone can fill in and submit
+  if (table && !isIn(table) && (step === 'quiz' || step === 'confirm') && !holds(table)) step = takenByOther(table) ? 'busy' : 'reclaim';
+  if (step === 'busy' && !takenByOther(table)) step = holds(table) ? 'quiz' : 'pin';
+  if (step === 'reclaim' && takenByOther(table)) step = 'busy';
+  if (step === 'busy') { $('busyTable').textContent = `Table ${table}`; show('sBusy'); return; }
+  if (step === 'reclaim') { $('reclaimTable').textContent = `Table ${table}`; show('sReclaim'); return; }
   if (step === 'amend') {
     $('amendTable').textContent = `Table ${table}`;
     show('sAmend'); return;
@@ -227,13 +259,14 @@ function render(){
   }
   if (step === 'table') {
     $('tables').innerHTML = Array.from({ length: tables }, (_, k) => k + 1).map(t => {
-      const d = isIn(t), r = isReopened(t);
-      return `<button class="tbl${d ? ' done' : ''}" type="button" data-t="${t}"><b>${t}</b><small>${d ? '✓ Submitted' : r ? 'Reopened by host' : 'Tap to choose'}</small></button>`;
+      const d = isIn(t), r = isReopened(t), a = !d && takenByOther(t);
+      return `<button class="tbl${d ? ' done' : ''}" type="button" data-t="${t}"><b>${t}</b><small>${d ? '✓ Submitted' : r ? 'Reopened by host' : a ? 'Answering…' : 'Tap to choose'}</small></button>`;
     }).join('');
     show('sTable'); return;
   }
   if (step === 'pin') {
-    $('pinLabel').textContent = `Table ${table}`; $('pinErr').textContent = pinErr; $('pin').value = pin; $('pinGo').disabled = !/^\d{4}$/.test(pin);
+    $('pinLabel').textContent = `Table ${table}`; $('pinErr').textContent = pinErr; $('pin').value = pin;
+    $('pinGo').disabled = claiming || !/^\d{4}$/.test(pin); $('pinGo').textContent = claiming ? 'Checking…' : 'Continue';
     show('sPin'); setTimeout(() => $('pin').focus(), 50); return;
   }
   if (step === 'quiz') {
@@ -254,14 +287,32 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-back]');
   if (b) { const to = b.dataset.back; if (to === 'table') { table = null; pin = ''; } step = to; $('err').textContent = ''; save(); render(); return; }
   const t = e.target.closest('[data-t]');
-  if (t) { const n = +t.dataset.t; table = n; step = isIn(n) ? 'locked' : 'pin'; save(); render(); return; }
+  if (t) { const n = +t.dataset.t; if (table !== n) { pin = ''; pinErr = ''; } table = n; step = isIn(n) ? 'locked' : takenByOther(n) ? 'busy' : holds(n) ? 'quiz' : 'pin'; save(); render(); return; }
   const o = e.target.closest('[data-q]');
   if (o) { answers[o.dataset.q] = o.dataset.l; save(); render(); return; }
 });
 $('pin').addEventListener('input', e => { pinErr = ''; $('pinErr').textContent = ''; pin = e.target.value.replace(/\D/g, '').slice(0, 4); e.target.value = pin; $('pinGo').disabled = pin.length !== 4; save(); });
 $('pin').addEventListener('keydown', e => { if (e.key === 'Enter' && pin.length === 4) $('pinGo').click(); });
-$('pinGo').onclick = () => { step = 'quiz'; save(); render(); };
-$('amendGo').onclick = () => { if (mine && mine.answers) answers = { ...mine.answers }; mine = null; step = pin ? 'quiz' : 'pin'; save(); render(); };
+// Checks the PIN straight away by claiming the table for this phone. The database only accepts the claim if the PIN matches.
+async function claimNow(){
+  if (claiming || !table || !/^\d{4}$/.test(pin)) { step = 'pin'; render(); return; }
+  claiming = true; pinErr = ''; step = 'pin'; render();
+  const t = table, gen = ver(t);
+  try {
+    await update(ref(db, `pc/sessions/${sid}`), { [`claims/${t}`]: { tok, pin, gen }, [`owner/${t}`]: { gen, at: serverTimestamp() } });
+    claim = { t, gen }; step = 'quiz';
+  } catch (err) {
+    let other = false;
+    try { const o = (await get(ref(db, `pc/sessions/${sid}/owner/${t}`))).val(); other = !!(o && o.gen === ver(t)); } catch (_) {}
+    if (other) step = 'busy';
+    else if (/permission/i.test(err.message || err.code || '')) { pinErr = `That PIN doesn't match Table ${t}. Check the card on your table and try again.`; pin = ''; step = 'pin'; }
+    else { pinErr = "Couldn't check the PIN. Check your connection and try again."; step = 'pin'; }
+  }
+  claiming = false; save(); render();
+}
+$('pinGo').onclick = claimNow;
+$('reclaimGo').onclick = () => { if (pin) claimNow(); else { step = 'pin'; render(); } };
+$('amendGo').onclick = () => { if (mine && mine.answers) answers = { ...mine.answers }; mine = null; save(); if (pin) claimNow(); else { step = 'pin'; render(); } };
 $('review').onclick = () => { if (allAnswered()) { step = 'confirm'; render(); } };
 
 $('submit').onclick = async () => {
@@ -272,7 +323,7 @@ $('submit').onclick = async () => {
   try {
     await update(ref(db, `pc/sessions/${sid}`), {
       [`subs/${table}`]: { at: serverTimestamp(), v },
-      [`ans/${table}`]: { pin, a, v },
+      [`ans/${table}`]: { pin, a, v, tok },
       [`hist/${table}/${v}`]: { pin, a, v, at: serverTimestamp() }
     });
     mine = { table, answers: { ...answers }, at: Date.now() + offset, v }; step = 'done'; save();
@@ -282,10 +333,9 @@ $('submit').onclick = async () => {
       const s = await get(ref(db, `pc/sessions/${sid}/subs/${table}`));
       if (s.exists() && (s.val().v || 0) >= ver(table)) { step = 'locked'; msg = ''; }
       else if (phase() !== 'open') msg = "Sorry, time's up. Submissions are closed.";
-      else if (/permission/i.test(err.message || err.code || '')) msg = `That PIN doesn't match Table ${table}. Check the card on your table and try again.`;
+      else if (!holds(table)) { step = takenByOther(table) ? 'busy' : 'reclaim'; msg = ''; }
     } catch (_) {}
-    if (/PIN/.test(msg)) { pinErr = msg; step = 'pin'; pin = ''; save(); }
-    else $('err').textContent = msg;
+    $('err').textContent = msg;
   }
   busy = false; render();
 };
