@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0F1B2D">
+<title>Buzzer</title>
+<style>
+  :root{ --navy:#0F1B2D; --panel:#17283F; --line:#2A3F5C; --gold:#E8B84A; --cream:#F5F1E8; --muted:#9AA7BA; --green:#6BC48A;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace; --sans: -apple-system, "Segoe UI", Inter, Arial, sans-serif; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--navy);color:var(--cream);font-family:var(--sans);overscroll-behavior:none}
+  body{min-height:100dvh;display:flex;flex-direction:column;padding:max(20px,env(safe-area-inset-top)) 20px max(20px,env(safe-area-inset-bottom))}
+  .label{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold)}
+  .hidden{display:none !important}
+  h1{font-size:30px;margin:8px 0 6px}
+  p{color:var(--muted);line-height:1.5;margin:0 0 18px}
+  #pick{display:flex;flex-direction:column;gap:12px;margin-top:8px}
+  #seats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .seat{font:inherit;font-family:var(--mono);font-size:34px;padding:22px 0;border-radius:16px;border:1.5px solid var(--line);background:var(--panel);color:var(--cream);cursor:pointer}
+  .seat:disabled{opacity:.3}
+  .seat small{display:block;font-size:12px;color:var(--muted);margin-top:4px;font-family:var(--sans)}
+  #play{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:16px;text-align:center}
+  #me{font-family:var(--mono);font-size:44px;line-height:1}
+  #qlabel{font-family:var(--mono);font-size:14px;color:var(--muted);margin-top:6px}
+  #buzz{width:min(70vw,300px);aspect-ratio:1;border-radius:50%;border:none;font:inherit;font-weight:800;font-size:44px;letter-spacing:.04em;
+    background:#22344F;color:#5F7190;box-shadow:inset 0 -10px 0 rgba(0,0,0,.25);touch-action:manipulation;user-select:none;-webkit-user-select:none;cursor:pointer;transition:transform .06s}
+  #buzz.ready{background:radial-gradient(circle at 35% 30%,#F6DD94,#E8B84A 45%,#B8892A);color:#231B08;box-shadow:0 0 0 10px rgba(232,184,74,.18),inset 0 -12px 0 rgba(0,0,0,.18);animation:breathe 1.2s ease-in-out infinite}
+  #buzz.ready:active{transform:scale(.96)}
+  #buzz.first{background:var(--green);color:#0B2615;box-shadow:0 0 0 14px rgba(107,196,138,.25)}
+  #buzz.queued{background:#3A4E6C;color:var(--cream)}
+  @keyframes breathe{0%,100%{box-shadow:0 0 0 6px rgba(232,184,74,.15),inset 0 -12px 0 rgba(0,0,0,.18)}50%{box-shadow:0 0 0 16px rgba(232,184,74,.28),inset 0 -12px 0 rgba(0,0,0,.18)}}
+  #qbox{width:100%;max-height:30vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;text-align:left;font-size:16px;line-height:1.4;white-space:pre-line}
+  #status{font-size:20px;font-weight:600;min-height:2.4em}
+  #status small{display:block;font-size:14px;font-weight:400;color:var(--muted);margin-top:4px}
+  .foot{font-family:var(--mono);font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center;justify-content:center}
+  .dot{width:9px;height:9px;border-radius:5px;background:#E06C5A}
+  .foot.on .dot{background:var(--green)}
+  .link{background:none;border:none;color:var(--muted);text-decoration:underline;font:inherit;font-size:12px;cursor:pointer}
+  #err{color:#E06C5A;font-family:var(--mono);font-size:14px;margin-top:12px}
+</style>
+</head>
+<body>
+
+<section id="pick">
+  <div class="label">Buzzer final</div>
+  <h1>Tap your seat tag</h1>
+  <p>Choose the tag printed on your card. This phone becomes your buzzer.</p>
+  <div id="seats"></div>
+  <div id="err" role="status"></div>
+</section>
+
+<section id="play" class="hidden">
+  <div>
+    <div class="label">Buzzer final</div>
+    <div id="me" style="margin-top:10px"></div>
+    <div id="qlabel"></div>
+  </div>
+  <div id="qbox" class="hidden" aria-live="polite"></div>
+  <button id="buzz" type="button" aria-label="Buzz">WAIT</button>
+  <div id="status" aria-live="assertive"></div>
+  <div>
+    <div class="foot" id="foot"><span class="dot"></span><span id="netTxt">Connecting…</span></div>
+    <div style="text-align:center;margin-top:8px"><button class="link" id="switch" type="button">Not you? Change seat</button></div>
+  </div>
+</section>
+
+<script src="buzzer-config.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, set, onValue, runTransaction, onDisconnect, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const room = (new URLSearchParams(location.search).get('room') || '').toUpperCase().replace(/[^A-Z]/g, '');
+const cfg = window.FIREBASE_CONFIG || {};
+if (!room) { $('err').textContent = 'This link is missing its room code. Please scan the QR code again.'; throw new Error('no room'); }
+if (!cfg.databaseURL || /PASTE_HERE/.test(JSON.stringify(cfg))) { $('err').textContent = 'Buzzer is not configured yet.'; throw new Error('no config'); }
+
+const db = getDatabase(initializeApp(cfg));
+const R = p => ref(db, `rooms/${room}/${p}`);
+const KEY = `buzzer-${room}`;
+const saved = (() => { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch(e){ return null; } })();
+const token = saved?.token || (Math.random().toString(36).slice(2) + Date.now().toString(36));
+let slot = null, players = [], claims = {}, state = {}, offset = 0, buzzedRound = null, wakeLock = null, connected = false;
+
+onValue(ref(db, '.info/serverTimeOffset'), s => { offset = s.val() || 0; });
+onValue(ref(db, '.info/connected'), s => {
+  connected = !!s.val(); $('foot').classList.toggle('on', connected);
+  $('netTxt').textContent = connected ? 'Connected' : 'Reconnecting…';
+  if (connected && slot !== null) markPresent();
+});
+onValue(R('meta/players'), s => { players = s.val() || []; renderSeats(); renderPlay(); });
+onValue(R('claims'), s => {
+  claims = s.val() || {};
+  if (slot !== null && (!claims[slot] || claims[slot].token !== token)) { slot = null; save(); showPick(); }  // host cleared joins
+  renderSeats();
+});
+onValue(R('state'), s => { state = s.val() || {}; renderPlay(); });
+
+function save(){ try { localStorage.setItem(KEY, JSON.stringify({ token, slot })); } catch(e){} }
+function renderSeats(){
+  $('seats').innerHTML = players.map((p,i) => {
+    const taken = claims[i] && claims[i].token !== token;
+    return `<button class="seat" type="button" data-i="${i}" ${taken ? 'disabled' : ''}>${esc(p.tag)}<small>${taken ? 'Taken' : 'Tap if this is you'}</small></button>`;
+  }).join('') || '<p>Waiting for the host to set up the finalists…</p>';
+}
+$('seats').addEventListener('click', async e => {
+  const b = e.target.closest('[data-i]'); if (!b) return;
+  const i = +b.dataset.i; $('err').textContent = '';
+  try {
+    const res = await runTransaction(R(`claims/${i}`), cur => (!cur || cur.token === token) ? { token, at: Date.now() } : undefined);
+    if (!res.committed) { $('err').textContent = 'That seat was just taken. Pick your own tag.'; return; }
+    if (slot !== null && slot !== i) { remove(R(`claims/${slot}`)).catch(()=>{}); remove(R(`presence/${slot}`)).catch(()=>{}); }
+    slot = i; save(); markPresent(); showPlay();
+  } catch (err) { $('err').textContent = 'Could not join: ' + err.message; }
+});
+function markPresent(){
+  const p = R(`presence/${slot}`);
+  onDisconnect(p).remove().catch(()=>{}); set(p, true).catch(()=>{});
+}
+function showPick(){ $('pick').classList.remove('hidden'); $('play').classList.add('hidden'); }
+function showPlay(){ $('pick').classList.add('hidden'); $('play').classList.remove('hidden'); keepAwake(); renderPlay(); }
+async function keepAwake(){ try { if ('wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => wakeLock = null); } } catch(e){} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && slot !== null) { keepAwake(); markPresent(); } });
+$('switch').onclick = () => { if (slot !== null) { remove(R(`claims/${slot}`)).catch(()=>{}); remove(R(`presence/${slot}`)).catch(()=>{}); } slot = null; save(); showPick(); };
+
+function canBuzz(){
+  if (slot === null || !connected) return false;
+  if (state.phase !== 'open' && state.phase !== 'locked') return false;
+  if (state.eligible && !state.eligible[slot]) return false;
+  if (state.out && state.out[slot]) return false;
+  if (buzzedRound === state.round) return false;
+  if ((state.order || []).includes(slot)) return false;
+  return true;
+}
+function renderPlay(){
+  if (slot === null) return;
+  const me = players[slot] || {}; $('me').textContent = me.tag || '';
+  $('qlabel').textContent = state.label || '';
+  $('qbox').textContent = state.question || ''; $('qbox').classList.toggle('hidden', !state.question);
+  const btn = $('buzz'); btn.className = '';
+  const order = state.order || [], pos = order.indexOf(slot);
+  const st = (a, b='') => { $('status').innerHTML = `${esc(a)}${b ? `<small>${esc(b)}</small>` : ''}`; };
+  const place = (state.placed || []).indexOf(slot);
+  if (place >= 0) { btn.classList.add('first'); btn.textContent = ['1st','2nd','3rd'][place] || (place+1)+'th'; st(`You placed ${['1st','2nd','3rd'][place] || (place+1)+'th'}!`, 'Congratulations'); return; }
+  if (state.phase === 'done') { btn.textContent = '★'; st('Thanks for playing!', 'Look up at the screen'); return; }
+  if (state.eligible && !state.eligible[slot]) { btn.textContent = '—'; st('Sudden win in progress', 'Only the tied players can buzz for this place'); return; }
+  if (state.out && state.out[slot]) { btn.textContent = '✕'; st('Not this time', 'Wait for the next question'); return; }
+  if (state.answering === slot) { btn.classList.add('first'); btn.textContent = 'YOU!'; st("You're first!", 'Answer the emcee now'); return; }
+  if (pos >= 0 || buzzedRound === state.round && state.phase !== 'idle') {
+    btn.classList.add('queued'); btn.textContent = pos > 0 ? ['1st','2nd','3rd'][pos] || (pos+1)+'th' : '✓';
+    st(pos > 0 ? `You're ${pos === 1 ? '2nd' : pos === 2 ? '3rd' : (pos+1)+'th'} in line` : 'Buzzed!', 'You answer if the person before you is wrong'); return;
+  }
+  if (canBuzz()) { btn.classList.add('ready'); btn.textContent = 'BUZZ'; st(state.phase === 'open' ? 'Buzzers open!' : 'Someone is answering', state.phase === 'open' ? 'Tap as fast as you can' : 'Tap to queue in case they are wrong'); return; }
+  btn.textContent = 'WAIT';
+  st(state.phase === 'lobby' || !state.phase ? "You're in!" : 'Get ready…', state.phase === 'lobby' || !state.phase ? 'The game will start soon' : 'Wait for the emcee to open the buzzers');
+}
+function doBuzz(e){
+  e.preventDefault();
+  if (!canBuzz()) return;
+  const r = state.round; buzzedRound = r;
+  try { navigator.vibrate && navigator.vibrate(80); } catch(_){}
+  set(R(`buzzes/${r}/${slot}`), { t: Date.now() + offset }).catch(() => { buzzedRound = null; renderPlay(); });
+  renderPlay();
+}
+$('buzz').addEventListener('pointerdown', doBuzz);
+
+// restore an earlier join on this phone (e.g. after the screen locked or the page reloaded)
+if (saved && saved.slot !== null && saved.slot !== undefined) {
+  runTransaction(R(`claims/${saved.slot}`), cur => (!cur || cur.token === token) ? { token, at: Date.now() } : undefined)
+    .then(res => { if (res.committed) { slot = saved.slot; save(); markPresent(); showPlay(); } })
+    .catch(()=>{});
+}
+</script>
+</body>
+</html>
