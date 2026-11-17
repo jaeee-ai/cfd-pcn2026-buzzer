@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0F1B2D">
+<title>Picture This</title>
+<style>
+  :root{ --navy:#0F1B2D; --panel:#17283F; --line:#2A3F5C; --gold:#E8B84A; --cream:#F5F1E8; --muted:#9AA7BA; --green:#6BC48A; --red:#E06C5A;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace; --sans: -apple-system, "Segoe UI", Inter, Arial, sans-serif; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--navy);color:var(--cream);font-family:var(--sans)}
+  body{min-height:100dvh;padding:max(18px,env(safe-area-inset-top)) 18px max(24px,env(safe-area-inset-bottom));max-width:560px;margin:0 auto}
+  .label{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold)}
+  .hidden{display:none !important}
+  h1{font-size:28px;margin:6px 0 6px;line-height:1.15}
+  h2{font-size:20px;margin:0 0 10px}
+  p{color:var(--muted);line-height:1.5;margin:0 0 16px}
+  button{font:inherit;cursor:pointer}
+  #timer{position:sticky;top:0;z-index:2;margin:0 -18px 14px;padding:10px 18px;background:var(--navy);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:14px;color:var(--muted)}
+  #timer b{color:var(--cream);font-size:18px}
+  #timer.open b{color:var(--gold)}
+  #timer.closed b{color:var(--red)}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .tbl{border-radius:16px;border:1.5px solid var(--line);background:var(--panel);color:var(--cream);padding:18px 8px;text-align:center}
+  .tbl b{display:block;font-family:var(--mono);font-size:30px}
+  .tbl small{display:block;font-size:12px;color:var(--muted);margin-top:4px}
+  .tbl.done{opacity:.45}
+  .tbl.done small{color:var(--green)}
+  input.pin{width:100%;font-family:var(--mono);font-size:40px;letter-spacing:.5em;text-align:center;padding:14px 0 14px .5em;background:var(--panel);border:1.5px solid var(--line);border-radius:16px;color:var(--cream)}
+  input.pin:focus{outline:2px solid var(--gold);outline-offset:1px}
+  .btn{width:100%;border:none;border-radius:999px;padding:16px 20px;font-weight:700;font-size:17px;margin-top:14px}
+  .btn.primary{background:var(--gold);color:var(--navy)}
+  .btn.primary:disabled{background:#3A4E6C;color:var(--muted)}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--cream)}
+  .link{background:none;border:none;color:var(--muted);text-decoration:underline;font-size:14px;padding:10px 0}
+  .q{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:14px}
+  .q .qh{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-weight:700}
+  .q .num{width:30px;height:30px;border-radius:50%;background:var(--gold);color:var(--navy);display:flex;align-items:center;justify-content:center;font-family:var(--mono);flex:none}
+  .opt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--navy);border:1.5px solid var(--line);color:var(--cream);border-radius:12px;padding:12px;margin-top:8px;font-size:16px;line-height:1.3}
+  .opt .l{font-family:var(--mono);color:var(--gold);font-weight:700;flex:none;width:18px}
+  .opt.on{border-color:var(--gold);background:#2B2410}
+  .summary{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:6px 14px;margin:6px 0 4px}
+  .summary div{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);line-height:1.35}
+  .summary div:last-child{border-bottom:none}
+  .summary span{font-family:var(--mono);color:var(--gold);flex:none}
+  .big{font-family:var(--mono);font-size:56px;color:var(--gold);line-height:1;margin:6px 0 10px}
+  .tick{font-size:48px;color:var(--green);line-height:1;margin-top:10px}
+  #err{color:var(--red);font-size:15px;line-height:1.4;margin-top:12px;min-height:1.4em}
+  .foot{font-family:var(--mono);font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center;justify-content:center;margin-top:22px}
+  .dot{width:9px;height:9px;border-radius:5px;background:var(--red)}
+  .foot.on .dot{background:var(--green)}
+</style>
+</head>
+<body>
+
+<div id="timer"><span id="tLabel">Picture This</span><b id="tVal"></b></div>
+
+<!-- waiting for host -->
+<section id="sWait">
+  <div class="label">Game 01 · Picture This</div>
+  <h1>Hang tight</h1>
+  <p>The round will start soon. Keep this page open.</p>
+</section>
+
+<!-- choose table -->
+<section id="sTable" class="hidden">
+  <div class="label">Game 01 · Picture This</div>
+  <h1>Which table are you at?</h1>
+  <p>Each table gets one entry, so decide on your answers together before you submit.</p>
+  <div class="grid" id="tables"></div>
+</section>
+
+<!-- PIN -->
+<section id="sPin" class="hidden">
+  <div class="label" id="pinLabel"></div>
+  <h1>Enter your table PIN</h1>
+  <p>You'll find the 4-digit PIN on the card at your table.</p>
+  <input class="pin" id="pin" type="text" inputmode="numeric" autocomplete="off" maxlength="4" placeholder="····" aria-label="Table PIN">
+  <div id="pinErr" role="alert" style="color:var(--red);font-size:15px;line-height:1.4;margin-top:12px"></div>
+  <button class="btn primary" id="pinGo" type="button" disabled>Continue</button>
+  <button class="link" type="button" data-back="table">Wrong table? Go back</button>
+</section>
+
+<!-- answers -->
+<section id="sQuiz" class="hidden">
+  <div class="label" id="quizLabel"></div>
+  <h1>What are these?</h1>
+  <p>Pick one answer for each picture on the screen.</p>
+  <div id="qs"></div>
+  <button class="btn primary" id="review" type="button" disabled>Review answers</button>
+  <button class="link" type="button" data-back="pin">Back</button>
+</section>
+
+<!-- confirm -->
+<section id="sConfirm" class="hidden">
+  <div class="label">Game 01 · Picture This</div>
+  <h1 id="confirmTitle"></h1>
+  <p>Your table only gets one go. Once you submit, the answers can't be changed.</p>
+  <div class="summary" id="summary"></div>
+  <button class="btn primary" id="submit" type="button">Submit</button>
+  <button class="btn ghost" type="button" data-back="quiz">Change answers</button>
+  <div id="err" role="alert"></div>
+</section>
+
+<!-- submitted (by this phone) -->
+<section id="sDone" class="hidden">
+  <div class="label">Game 01 · Picture This</div>
+  <div class="tick">✓</div>
+  <h1 id="doneTitle">Submitted!</h1>
+  <p id="doneSub"></p>
+  <div class="summary" id="doneSummary"></div>
+  <p style="margin-top:16px">Keep your eyes on the screen for the results. Need to change something while time is still running? Ask the host.</p>
+</section>
+
+<!-- host has reopened this table's entry -->
+<section id="sAmend" class="hidden">
+  <div class="label">Game 01 · Picture This</div>
+  <div class="big" id="amendTable"></div>
+  <h1>You can change your answers</h1>
+  <p>The host has reopened your table's entry. Your new submission replaces the old one, and its new time is what counts. If you don't resubmit before time's up, your earlier answers stand.</p>
+  <button class="btn primary" id="amendGo" type="button">Change answers</button>
+</section>
+
+<!-- table already submitted from another phone -->
+<section id="sLocked" class="hidden">
+  <div class="label">Game 01 · Picture This</div>
+  <div class="big" id="lockedTable"></div>
+  <h1>Your table has already submitted</h1>
+  <p id="lockedSub"></p>
+  <button class="link" type="button" data-back="table">Picked the wrong table? Go back</button>
+</section>
+
+<div class="foot" id="foot"><span class="dot"></span><span id="netTxt">Connecting…</span></div>
+
+<script src="config.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, onValue, update, get, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const LETTERS = 'ABCD';
+const cfg = window.FIREBASE_CONFIG || {};
+const db = getDatabase(initializeApp(cfg));
+
+let cur = null, subs = {}, rel = {}, offset = 0, unsubSubs = null, unsubRel = null, sid = null;
+let step = 'table', table = null, pin = '', answers = {}, mine = null, busy = false, pinErr = '';
+
+const fmtTime = ms => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+const key = () => `picture-${sid}`;
+const load = () => { try { return JSON.parse(localStorage.getItem(key()) || 'null'); } catch (e) { return null; } };
+const save = () => { try { localStorage.setItem(key(), JSON.stringify({ table, pin, answers, mine })); } catch (e) {} };
+
+onValue(ref(db, '.info/serverTimeOffset'), s => { offset = s.val() || 0; });
+onValue(ref(db, '.info/connected'), s => { const on = !!s.val(); $('foot').classList.toggle('on', on); $('netTxt').textContent = on ? 'Connected' : 'Reconnecting…'; });
+
+onValue(ref(db, 'pc/current'), s => {
+  cur = s.val();
+  const newSid = cur && cur.sid ? String(cur.sid) : null;
+  if (newSid !== sid) {                                   // new session (e.g. after a rehearsal): start fresh
+    sid = newSid; subs = {}; rel = {};
+    if (unsubSubs) { unsubSubs(); unsubSubs = null; }
+    if (unsubRel) { unsubRel(); unsubRel = null; }
+    const st = sid ? load() : null;
+    table = st?.table ?? null; pin = st?.pin || ''; answers = st?.answers || {}; mine = st?.mine || null;
+    step = mine ? 'done' : table ? (pin ? 'quiz' : 'pin') : 'table';
+    if (sid) {
+      unsubSubs = onValue(ref(db, `pc/sessions/${sid}/subs`), s2 => { subs = s2.val() || {}; render(); });
+      unsubRel = onValue(ref(db, `pc/sessions/${sid}/rel`), s2 => { rel = s2.val() || {}; render(); });
+    }
+  }
+  render();
+});
+
+function phase(){
+  if (!cur || !cur.sid) return 'none';
+  if (cur.open && cur.closesAt && Date.now() + offset >= cur.closesAt) return 'closed';
+  return cur.open ? 'open' : cur.openedAt ? 'closed' : 'ready';
+}
+function tick(){
+  const ph = phase(), t = $('timer');
+  t.className = ph === 'open' ? 'open' : ph === 'closed' ? 'closed' : '';
+  if (ph === 'open') {
+    const left = Math.max(0, Math.round((cur.closesAt - (Date.now() + offset)) / 1000));
+    $('tLabel').textContent = 'Time left'; $('tVal').textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+  } else if (ph === 'closed') { $('tLabel').textContent = 'Picture This'; $('tVal').textContent = "Time's up"; }
+  else { $('tLabel').textContent = 'Picture This'; $('tVal').textContent = ph === 'ready' ? 'Starting soon' : ''; }
+  const sb = $('submit'); if (sb && !busy) { sb.disabled = ph !== 'open'; sb.textContent = ph === 'open' ? 'Submit' : ph === 'closed' ? "Time's up" : 'Submissions open soon'; }
+}
+setInterval(tick, 500);
+
+const ver = t => (rel && rel[t]) || 0;
+const isIn = t => !!(subs[t] && (subs[t].v || 0) >= ver(t));         // has a current, final entry
+const isReopened = t => !!(subs[t] && (subs[t].v || 0) < ver(t));     // host let this table amend
+function show(id){ for (const s of ['sWait','sTable','sPin','sQuiz','sConfirm','sDone','sLocked','sAmend']) $(s).classList.toggle('hidden', s !== id); window.scrollTo(0, 0); }
+function qList(){ return (cur && cur.qs) ? cur.qs : []; }
+function allAnswered(){ const n = qList().length; return n > 0 && qList().every((q, i) => answers[i]); }
+function optText(i, l){ const q = qList()[i]; const k = LETTERS.indexOf(l); return q && q[k] ? q[k] : ''; }
+function summaryHTML(a){ return qList().map((q, i) => `<div><span>${i + 1}.</span><span>${esc(a[i] || '-')}</span>${esc(optText(i, a[i]))}</div>`).join(''); }
+
+function render(){
+  tick();
+  if (!cur || !cur.sid) { show('sWait'); return; }
+  const tables = cur.tables || 8;
+  // host reopened our table: offer to amend
+  const mineCurrent = !!(mine && (mine.v || 0) >= ver(table));
+  if (table && isReopened(table) && !mineCurrent && (step === 'done' || step === 'locked')) step = 'amend';
+  if (step === 'amend' && !isReopened(table)) step = mineCurrent ? 'done' : 'locked';
+  // someone else at this table already has the current entry in
+  if (table && isIn(table) && !(mine && (mine.v || 0) === (subs[table].v || 0)) && step !== 'done') step = 'locked';
+  if (step === 'amend') {
+    $('amendTable').textContent = `Table ${table}`;
+    show('sAmend'); return;
+  }
+  if (step === 'done' && mine) {
+    $('doneTitle').textContent = mine.v ? `Table ${mine.table}, your new answers are in!` : `Table ${mine.table}, you're in!`;
+    $('doneSub').textContent = `Submitted at ${fmtTime(mine.at || Date.now())}. Here's what you sent:`;
+    $('doneSummary').innerHTML = summaryHTML(mine.answers);
+    show('sDone'); return;
+  }
+  if (step === 'locked') {
+    $('lockedTable').textContent = `Table ${table}`;
+    $('lockedSub').textContent = `Your table's answers came in at ${fmtTime(subs[table].at)}. Only one entry per table counts, so you're all set. Keep your eyes on the screen for the results.`;
+    show('sLocked'); return;
+  }
+  if (step === 'table') {
+    $('tables').innerHTML = Array.from({ length: tables }, (_, k) => k + 1).map(t => {
+      const d = isIn(t), r = isReopened(t);
+      return `<button class="tbl${d ? ' done' : ''}" type="button" data-t="${t}"><b>${t}</b><small>${d ? '✓ Submitted' : r ? 'Reopened by host' : 'Tap to choose'}</small></button>`;
+    }).join('');
+    show('sTable'); return;
+  }
+  if (step === 'pin') {
+    $('pinLabel').textContent = `Table ${table}`; $('pinErr').textContent = pinErr; $('pin').value = pin; $('pinGo').disabled = !/^\d{4}$/.test(pin);
+    show('sPin'); setTimeout(() => $('pin').focus(), 50); return;
+  }
+  if (step === 'quiz') {
+    $('quizLabel').textContent = `Table ${table}`;
+    $('qs').innerHTML = qList().map((q, i) => `<div class="q"><div class="qh"><span class="num">${i + 1}</span>Picture ${i + 1}</div>` +
+      q.map((o, k) => o ? `<button type="button" class="opt${answers[i] === LETTERS[k] ? ' on' : ''}" data-q="${i}" data-l="${LETTERS[k]}"><span class="l">${LETTERS[k]}</span><span>${esc(o)}</span></button>` : '').join('') + '</div>').join('');
+    $('review').disabled = !allAnswered();
+    show('sQuiz'); return;
+  }
+  if (step === 'confirm') {
+    $('confirmTitle').textContent = `Submit for Table ${table}?`;
+    $('summary').innerHTML = summaryHTML(answers);
+    show('sConfirm'); return;
+  }
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-back]');
+  if (b) { const to = b.dataset.back; if (to === 'table') { table = null; pin = ''; } step = to; $('err').textContent = ''; save(); render(); return; }
+  const t = e.target.closest('[data-t]');
+  if (t) { const n = +t.dataset.t; table = n; step = isIn(n) ? 'locked' : 'pin'; save(); render(); return; }
+  const o = e.target.closest('[data-q]');
+  if (o) { answers[o.dataset.q] = o.dataset.l; save(); render(); return; }
+});
+$('pin').addEventListener('input', e => { pinErr = ''; $('pinErr').textContent = ''; pin = e.target.value.replace(/\D/g, '').slice(0, 4); e.target.value = pin; $('pinGo').disabled = pin.length !== 4; save(); });
+$('pin').addEventListener('keydown', e => { if (e.key === 'Enter' && pin.length === 4) $('pinGo').click(); });
+$('pinGo').onclick = () => { step = 'quiz'; save(); render(); };
+$('amendGo').onclick = () => { if (mine && mine.answers) answers = { ...mine.answers }; mine = null; step = pin ? 'quiz' : 'pin'; save(); render(); };
+$('review').onclick = () => { if (allAnswered()) { step = 'confirm'; render(); } };
+
+$('submit').onclick = async () => {
+  if (busy || phase() !== 'open') return;
+  busy = true; $('submit').disabled = true; $('submit').textContent = 'Submitting…'; $('err').textContent = '';
+  const a = {}; qList().forEach((q, i) => { a[i] = answers[i]; });
+  const v = ver(table);
+  try {
+    await update(ref(db, `pc/sessions/${sid}`), {
+      [`subs/${table}`]: { at: serverTimestamp(), v },
+      [`ans/${table}`]: { pin, a, v },
+      [`hist/${table}/${v}`]: { pin, a, v, at: serverTimestamp() }
+    });
+    mine = { table, answers: { ...answers }, at: Date.now() + offset, v }; step = 'done'; save();
+  } catch (err) {
+    let msg = 'Something went wrong. Check your connection and try again.';
+    try {
+      const s = await get(ref(db, `pc/sessions/${sid}/subs/${table}`));
+      if (s.exists() && (s.val().v || 0) >= ver(table)) { step = 'locked'; msg = ''; }
+      else if (phase() !== 'open') msg = "Sorry, time's up. Submissions are closed.";
+      else if (/permission/i.test(err.message || err.code || '')) msg = `That PIN doesn't match Table ${table}. Check the card on your table and try again.`;
+    } catch (_) {}
+    if (/PIN/.test(msg)) { pinErr = msg; step = 'pin'; pin = ''; save(); }
+    else $('err').textContent = msg;
+  }
+  busy = false; render();
+};
+
+render();
+</script>
+</body>
+</html>

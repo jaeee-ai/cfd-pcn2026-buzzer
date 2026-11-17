@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Picture This · Host</title>
+<style>
+  :root{ --navy:#0F1B2D; --panel:#17283F; --line:#2A3F5C; --gold:#E8B84A; --cream:#F5F1E8; --muted:#9AA7BA; --red:#E06C5A; --green:#6BC48A;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace; --sans: -apple-system, "Segoe UI", Inter, Arial, sans-serif; }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--navy);color:var(--cream);font-family:var(--sans)}
+  button{font:inherit;cursor:pointer}
+  .label{font-family:var(--mono);font-size:14px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold)}
+  .hidden{display:none !important}
+  .screen{position:fixed;inset:0;overflow:auto}
+  .btn{border:none;border-radius:999px;padding:12px 22px;font-weight:600}
+  .btn.primary{background:var(--gold);color:var(--navy)}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--cream)}
+  .btn.danger{background:transparent;border:1px solid var(--red);color:var(--red)}
+  .btn:disabled{opacity:.4;cursor:default}
+  .msg{font-family:var(--mono);font-size:14px;min-height:1.4em;margin-top:10px;color:var(--red)}
+  .msg.ok{color:var(--green)}
+
+  /* setup */
+  #setup{padding:5vh 5vw;display:flex;justify-content:center}
+  .card{width:100%;max-width:960px}
+  .card h2{font-size:34px;margin:6px 0 6px}
+  .card h3{font-size:22px;margin:34px 0 6px}
+  .card p{color:var(--muted);margin:0 0 16px;line-height:1.5}
+  .row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+  .field{display:flex;align-items:center;gap:10px;color:var(--muted)}
+  input[type=text],input[type=number]{background:var(--panel);border:1px solid var(--line);color:var(--cream);border-radius:10px;padding:10px 12px;font:inherit;font-size:16px}
+  input:focus,select:focus{outline:2px solid var(--gold);outline-offset:1px}
+  input[type=number]{width:90px}
+  select{background:var(--panel);border:1px solid var(--line);color:var(--cream);border-radius:10px;padding:10px;font:inherit}
+  .pic{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}
+  .pic .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .pic .head b{font-size:18px}
+  .opts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .opts label{display:flex;align-items:center;gap:10px;font-family:var(--mono);color:var(--gold)}
+  .opts input{flex:1;min-width:0}
+  .pins{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+  .pins label{display:flex;flex-direction:column;gap:6px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .pins input{font-family:var(--mono);font-size:22px;letter-spacing:.2em;text-align:center}
+  .status{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;color:var(--muted);line-height:1.5;margin-top:10px}
+  .status b{color:var(--cream)}
+
+  /* board */
+  #board{display:flex;flex-direction:column;justify-content:space-between;padding:3.2vh 3.2vw 2.2vh;gap:2.2vh}
+  header{display:flex;justify-content:space-between;align-items:flex-end;gap:24px}
+  header h1{margin:6px 0 0;font-size:clamp(32px,4.2vw,72px);line-height:1;font-weight:800}
+  #clock{text-align:right}
+  #clock .t{font-family:var(--mono);font-size:clamp(48px,6.6vw,116px);line-height:1;font-weight:700}
+  #clock .s{font-family:var(--mono);font-size:clamp(14px,1.3vw,20px);color:var(--muted);margin-top:6px}
+  #clock.open .t{color:var(--gold)}
+  #clock.closed .t{color:var(--red)}
+  #clock.hurry .t{animation:hurry 1s ease-in-out infinite}
+  @keyframes hurry{50%{opacity:.45}}
+  #picsRow{display:grid;grid-template-columns:repeat(var(--np,3),minmax(0,1fr));gap:2vw;flex:none;padding-top:10px}
+  .pframe{position:relative;aspect-ratio:3/2}
+  .pframe .pi{position:absolute;inset:0;border-radius:22px;overflow:hidden;background:#0A1422;border:1.5px solid var(--line)}
+  .pframe img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .pframe .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);color:var(--muted);font-size:clamp(16px,1.4vw,22px)}
+  .pframe .pb{position:absolute;top:-16px;left:-16px;z-index:1;width:clamp(40px,3.4vw,60px);height:clamp(40px,3.4vw,60px);border-radius:50%;background:var(--gold);color:var(--navy);
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:clamp(20px,1.8vw,30px);box-shadow:0 4px 18px rgba(0,0,0,.4)}
+  #race{display:flex;gap:1.6vw;align-items:stretch}
+  #chips{flex:1;display:grid;grid-template-columns:repeat(var(--nt,8),minmax(0,1fr));gap:1vw;padding-top:14px}
+  .chip{position:relative;border-radius:18px;background:var(--panel);border:1.5px solid var(--line);padding:1.4vh .4vw 1.6vh;text-align:center;transition:background .4s,border-color .4s,opacity .4s}
+  .chip .n{font-family:var(--mono);font-size:clamp(11px,.9vw,14px);letter-spacing:.18em;color:var(--muted)}
+  .chip .big{font-family:var(--mono);font-size:clamp(34px,3.6vw,64px);line-height:1.05;font-weight:700}
+  .chip .st{font-family:var(--mono);font-size:clamp(12px,1vw,17px);color:var(--muted);margin-top:2px}
+  .chip.in{background:#1C3A2A;border-color:var(--green);box-shadow:0 0 24px rgba(107,196,138,.25)}
+  .chip.in .st,.chip.in .n{color:var(--green)}
+  .chip .pos{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--gold);color:var(--navy);border-radius:999px;padding:3px 12px;
+    font-family:var(--mono);font-weight:700;font-size:clamp(11px,.95vw,15px);white-space:nowrap}
+  .chip.pop{animation:pop 1.1s ease-out}
+  @keyframes pop{0%{transform:scale(1)}25%{transform:scale(1.14);box-shadow:0 0 60px rgba(107,196,138,.85)}100%{transform:scale(1)}}
+  .chip.wait{opacity:.8}
+  .chip.in{cursor:pointer}
+  .chip.amend{background:#2B2410;border-color:var(--gold);box-shadow:0 0 24px rgba(232,184,74,.25)}
+  .chip.amend .st,.chip.amend .n{color:var(--gold)}
+  #amendDlg{position:fixed;inset:0;background:rgba(15,27,45,.85);display:flex;align-items:center;justify-content:center;z-index:6}
+  #amendDlg .box{background:var(--panel);border:1.5px solid var(--gold);border-radius:22px;padding:28px 32px;max-width:560px;text-align:center}
+  #amendDlg h2{margin:6px 0 10px;font-size:30px}
+  #amendDlg p{color:var(--muted);line-height:1.5;margin:0 0 20px}
+  .histline{font-family:var(--mono);font-size:12px;color:var(--gold);margin-top:4px;font-weight:400;white-space:nowrap}
+  #qrMini{background:#fff;border-radius:18px;padding:10px 10px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;align-self:center;margin-top:14px}
+  #qrMini .cap{font-family:var(--mono);font-size:12px;letter-spacing:.12em;color:var(--navy);font-weight:700}
+  #count{font-family:var(--mono);font-size:clamp(16px,1.5vw,24px);color:var(--muted);text-align:center}
+  #count b{color:var(--gold)}
+  #toast{position:fixed;left:50%;top:16vh;transform:translate(-50%,-20px);opacity:0;background:var(--green);color:#0B2615;border-radius:999px;padding:14px 34px;
+    font-weight:800;font-size:clamp(22px,2.4vw,40px);transition:opacity .3s,transform .3s;pointer-events:none;z-index:4;box-shadow:0 10px 40px rgba(0,0,0,.4)}
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+  .ctl{transition:opacity .5s}
+  #controls{position:fixed;left:0;right:0;bottom:0;padding:18px 4vw 14px;display:flex;flex-direction:column;gap:8px;background:var(--panel);border-top:1px solid var(--line);z-index:3}
+  body.idle .ctl{opacity:0;pointer-events:none}
+  body.idle{cursor:none}
+  .imgrow{display:flex;align-items:center;gap:12px;margin-top:12px;color:var(--muted);font-size:14px}
+  .imgrow img{height:64px;border-radius:8px;border:1px solid var(--line)}
+  .imgrow input[type=file]{color:var(--muted);font-size:14px}
+  .bar{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center}
+  .help{font-family:var(--mono);font-size:12px;color:var(--muted);text-align:center}
+  .help kbd{border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--cream);background:var(--panel)}
+
+  /* results */
+  #results{display:flex;flex-direction:column;align-items:center;padding:5vh 5vw;gap:3vh}
+  #results h1{font-size:clamp(36px,4.4vw,72px);margin:6px 0 0;font-weight:800;text-align:center}
+  #rtable{width:min(1200px,92vw);border-collapse:separate;border-spacing:0 10px}
+  #rtable th{font-family:var(--mono);font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:400;padding:0 22px;text-align:left}
+  #rtable td{background:var(--panel);padding:1.6vh 22px;font-size:clamp(18px,1.8vw,30px);border-top:1px solid var(--line);border-bottom:1px solid var(--line);white-space:nowrap}
+  #rtable td:first-child{border-left:1px solid var(--line);border-radius:16px 0 0 16px;font-family:var(--mono);color:var(--gold);font-weight:700;width:9vw}
+  #rtable td:last-child{border-right:1px solid var(--line);border-radius:0 16px 16px 0;font-family:var(--mono);color:var(--muted);text-align:right}
+  #rtable td.tb{font-weight:800}
+  #rtable td.sc{font-family:var(--mono);color:var(--cream);font-weight:700}
+  #rtable td.marks{font-family:var(--mono);letter-spacing:.3em}
+  .ok{color:var(--green)} .no{color:var(--red)}
+  #rtable tr.first td{background:var(--gold);color:var(--navy);border-color:var(--gold)}
+  #rtable tr.first td:first-child,#rtable tr.first td:last-child,#rtable tr.first td.sc{color:var(--navy)}
+  #rtable tr.first .ok,#rtable tr.first .no{color:var(--navy)}
+  #rtable tr.none td{opacity:.45}
+  #rtable tr.veil td{color:transparent !important;background:var(--panel) !important;border-color:var(--line) !important}
+  #rtable tr.veil td *{visibility:hidden}
+  #entries{display:flex;flex-direction:column;align-items:center;padding:5vh 4vw;gap:2.4vh}
+  #entries h1{font-size:clamp(32px,3.6vw,60px);margin:6px 0 0;font-weight:800;text-align:center}
+  #entries .sub{color:var(--muted);text-align:center;font-size:clamp(14px,1.2vw,18px);margin:6px 0 0}
+  #etable{width:min(1400px,94vw);border-collapse:separate;border-spacing:0 8px}
+  #etable th{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:400;padding:0 12px;text-align:left}
+  #etable td{background:var(--panel);padding:10px 12px;font-size:clamp(14px,1.2vw,19px);border-top:1px solid var(--line);border-bottom:1px solid var(--line);vertical-align:middle}
+  #etable td:first-child{border-left:1px solid var(--line);border-radius:12px 0 0 12px;font-weight:800;white-space:nowrap}
+  #etable td:last-child{border-right:1px solid var(--line);border-radius:0 12px 12px 0}
+  #etable td.mono{font-family:var(--mono);white-space:nowrap;color:var(--muted)}
+  #etable td.mono b{color:var(--cream);font-weight:600}
+  #etable tr.keyrow td{background:#2B2410;border-color:var(--gold);color:var(--gold)}
+  #etable tr.none td{opacity:.45}
+  .cell{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:transparent;border:1.5px solid transparent;border-radius:10px;padding:6px 8px;color:var(--cream);font-size:inherit}
+  .cell .lt{font-family:var(--mono);font-weight:700;flex:none}
+  .cell .tx{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:16vw}
+  .cell .mk{margin-left:auto;font-weight:800;flex:none}
+  .cell.ok .mk,.cell.ok .lt{color:var(--green)}
+  .cell.no .mk,.cell.no .lt{color:var(--red)}
+  .cell.no:hover{border-color:var(--gold)}
+  .cell.acc{border-color:var(--gold);background:rgba(232,184,74,.12)}
+  .cell.acc .mk,.cell.acc .lt{color:var(--gold)}
+  .acclabel{font-family:var(--mono);font-size:11px;color:var(--gold);letter-spacing:.06em}
+  #key{width:min(1200px,92vw);display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+  #key div{background:var(--panel);border:1.5px solid var(--gold);border-radius:14px;padding:12px 18px;font-size:clamp(16px,1.5vw,24px)}
+  #key b{font-family:var(--mono);color:var(--gold);margin-right:10px}
+
+  /* QR overlay */
+  #qrOverlay{position:fixed;inset:0;background:rgba(15,27,45,.96);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3vh;z-index:5}
+  #qrOverlay h1{font-size:clamp(32px,4vw,64px);margin:0;font-weight:800}
+  #qrOverlay .qrbox{background:#fff;padding:20px;border-radius:20px}
+  #qrOverlay .url{font-family:var(--mono);color:var(--muted);font-size:16px}
+  #net{position:fixed;right:14px;bottom:8px;font-family:var(--mono);font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  #net .dot{width:9px;height:9px;border-radius:5px;background:var(--red)}
+  #net.on .dot{background:var(--green)}
+
+  /* printable PIN cards */
+  #print{display:none}
+  @media print{
+    @page{size:A4;margin:10mm}
+    html,body{background:#fff;color:#0F1B2D;height:auto}
+    body > *:not(#print){display:none !important}
+    #print{display:grid;grid-template-columns:1fr 1fr;gap:8mm}
+    .pcard{border:1.5px solid #0F1B2D;border-radius:6mm;padding:7mm;height:62mm;display:flex;flex-direction:column;justify-content:space-between;break-inside:avoid;font-family:Arial,sans-serif}
+    .pcard .k{font-size:9pt;letter-spacing:.16em;text-transform:uppercase;color:#8A5F00;font-weight:700}
+    .pcard .tn{font-size:26pt;font-weight:800;margin-top:2mm}
+    .pcard .pl{font-size:9pt;letter-spacing:.16em;text-transform:uppercase;color:#555}
+    .pcard .pn{font-family:"Courier New",monospace;font-size:40pt;font-weight:700;letter-spacing:.18em;line-height:1}
+    .pcard .hint{font-size:9pt;color:#444;line-height:1.35}
+  }
+</style>
+</head>
+<body>
+
+<!-- SETUP -->
+<section id="setup" class="screen">
+  <div class="card">
+    <div class="label">Game 01 · Picture This · setup</div>
+    <h2>Picture This</h2>
+    <p>Set up the answer options, the answer key and the table PINs. Everything here is saved on this laptop. The answer key never leaves this laptop: phones only receive the options.</p>
+    <div class="row">
+      <label class="field">Pictures <input type="number" id="nPics" min="1" max="6"></label>
+      <label class="field">Tables <input type="number" id="nTables" min="1" max="12"></label>
+      <label class="field">Time limit (minutes) <input type="number" id="mins" min="1" max="30"></label>
+    </div>
+
+    <h3>Pictures and answer options</h3>
+    <p>Choose the image for each picture: it shows on the live board while tables answer. Leave option D blank if a picture only has three choices. Pick the correct letter on the right.</p>
+    <div id="pics"></div>
+
+    <h3>Table PINs</h3>
+    <p>Each table needs its PIN to submit. Print the cards and put one on each table.</p>
+    <div class="pins" id="pins"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn ghost" id="genPins" type="button">Generate new PINs</button>
+      <button class="btn ghost" id="printPins" type="button">Print PIN cards</button>
+    </div>
+
+    <h3>Round</h3>
+    <div class="status" id="sessStatus"></div>
+    <div class="msg" id="setupMsg" role="status"></div>
+    <div class="row" style="margin:14px 0 6vh">
+      <button class="btn primary" id="newSession" type="button">Start a fresh round</button>
+      <button class="btn ghost" id="pushOpts" type="button">Update options on phones</button>
+      <button class="btn ghost" id="toBoard" type="button">Go to the live board</button>
+    </div>
+  </div>
+</section>
+
+<!-- BOARD -->
+<main id="board" class="screen hidden">
+  <header>
+    <div><div class="label">Game 01 · Picture This</div><h1>WHAT ARE THESE?</h1></div>
+    <div id="clock"><div class="t" id="clockT">--:--</div><div class="s" id="clockS"></div></div>
+  </header>
+  <div id="picsRow"></div>
+  <div id="race">
+    <div id="chips"></div>
+    <div id="qrMini"><div id="qrM"></div><div class="cap">SCAN TO SUBMIT</div></div>
+  </div>
+  <div id="count"></div>
+  <div id="controls" class="ctl">
+  <div class="bar">
+    <button class="btn primary" id="openBtn" type="button">Open submissions</button>
+    <button class="btn danger" id="closeBtn" type="button">Close now</button>
+    <button class="btn ghost" id="resultsBtn" type="button">Show results</button>
+    <button class="btn ghost" id="qrBtn" type="button">Big QR</button>
+    <button class="btn ghost" id="setupBtn" type="button">Setup</button>
+  </div>
+  <div class="msg" id="boardMsg" role="status" style="text-align:center"></div>
+  <div class="help"><kbd>O</kbd> open · <kbd>C</kbd> close · <kbd>R</kbd> results · <kbd>Q</kbd> big QR · <kbd>F</kbd> fullscreen · <kbd>Esc</kbd> setup · click a submitted table to let it amend · controls hide when the mouse is still</div>
+  </div>
+  <div id="toast"></div>
+</main>
+
+<!-- RESULTS -->
+<section id="results" class="screen hidden">
+  <div style="text-align:center"><div class="label">Game 01 · Picture This</div><h1>Results</h1></div>
+  <table id="rtable"><thead><tr><th>Place</th><th>Table</th><th>Score</th><th>Pictures</th><th style="text-align:right">Time</th></tr></thead><tbody id="rrows"></tbody></table>
+  <div id="key" class="hidden"></div>
+  <div class="msg" id="resMsg" role="status"></div>
+  <div class="help"><kbd>Space</kbd> reveal next place · <kbd>V</kbd> reveal all · <kbd>A</kbd> show answers · <kbd>E</kbd> entries &amp; disputes · <kbd>B</kbd> back to board · <kbd>F</kbd> fullscreen</div>
+</section>
+
+<!-- ENTRIES (for checking answers and resolving disputes) -->
+<section id="entries" class="screen hidden">
+  <div style="text-align:center"><div class="label">Game 01 · Picture This</div><h1>Every table's entry</h1>
+    <p class="sub">Times come from the Firebase server clock, not guests' phones. Click a ✗ to accept that answer. Click it again to undo.</p></div>
+  <table id="etable"><thead id="ehead"></thead><tbody id="erows"></tbody></table>
+  <div class="bar">
+    <button class="btn primary" id="csvBtn" type="button">Download CSV</button>
+    <button class="btn ghost" id="backRes" type="button">Back to results</button>
+  </div>
+  <div class="msg" id="entMsg" role="status" style="text-align:center"></div>
+  <div class="help"><kbd>B</kbd> back to results · <kbd>F</kbd> fullscreen</div>
+</section>
+
+<div id="qrOverlay" class="hidden">
+  <div class="label">Game 01 · Picture This</div>
+  <h1>Scan to submit</h1>
+  <div class="qrbox"><div id="qr"></div></div>
+  <div class="url" id="qrUrl"></div>
+  <div class="help">Press <kbd>Q</kbd> or click to close</div>
+</div>
+
+<div id="amendDlg" class="hidden" role="dialog" aria-modal="true" aria-labelledby="amendTitle">
+  <div class="box">
+    <div class="label">Game 01 · Picture This</div>
+    <h2 id="amendTitle"></h2>
+    <p id="amendText"></p>
+    <div class="bar">
+      <button class="btn primary" id="amendYes" type="button">Allow</button>
+      <button class="btn ghost" id="amendNo" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="print"></div>
+<div id="net"><span class="dot"></span><span id="netTxt">Connecting…</span></div>
+
+<script src="config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, set, update, get, onValue, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const LETTERS = 'ABCD';
+const show = id => { for (const s of ['setup','board','results','entries']) $(s).classList.toggle('hidden', s !== id); view = id; document.body.classList.remove('idle'); };
+let view = 'setup';
+
+// ---------- local setup (answer key stays on this laptop) ----------
+const STORE = 'picture-host-setup';
+let S = (() => { try { return JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { return null; } })() || {};
+S.nPics = S.nPics || 3; S.nTables = S.nTables || 8; S.mins = S.mins || 8;
+S.pics = S.pics || []; S.pins = S.pins || {};
+const saveS = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) {} };
+const IMG = [];
+for (let i = 0; i < 6; i++) { try { IMG[i] = localStorage.getItem('picture-host-img-' + i) || ''; } catch (e) { IMG[i] = ''; } }
+function setImg(i, data){
+  try { if (data) localStorage.setItem('picture-host-img-' + i, data); else localStorage.removeItem('picture-host-img-' + i); IMG[i] = data; return true; }
+  catch (e) { return false; }
+}
+function shrink(file){                       // resize to max 1600px so it fits in browser storage
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => { const im = new Image(); im.onload = () => {
+      const sc = Math.min(1, 1600 / Math.max(im.width, im.height)), c = document.createElement('canvas');
+      c.width = Math.round(im.width * sc); c.height = Math.round(im.height * sc);
+      const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(im, 0, 0, c.width, c.height);
+      res(c.toDataURL('image/jpeg', 0.86)); }; im.onerror = rej; im.src = r.result; };
+    r.onerror = rej; r.readAsDataURL(file);
+  });
+}
+function normalise(){
+  while (S.pics.length < S.nPics) S.pics.push({ opts: ['', '', '', ''], ans: 'A' });
+  S.pics.length = S.nPics;
+  for (let t = 1; t <= S.nTables; t++) if (!/^\d{4}$/.test(S.pins[t] || '')) S.pins[t] = randPin();
+  for (const k of Object.keys(S.pins)) if (+k > S.nTables) delete S.pins[k];
+}
+function randPin(){
+  const used = new Set(Object.values(S.pins || {}));
+  let p; do { p = String(Math.floor(1000 + Math.random() * 9000)); } while (used.has(p));
+  return p;
+}
+
+// ---------- Firebase ----------
+const cfg = window.FIREBASE_CONFIG || {};
+const db = getDatabase(initializeApp(cfg));
+let offset = 0, cur = null, subs = {}, rel = {}, unsubSubs = null, unsubRel = null, subsSid = null;
+const now = () => Date.now() + offset;
+onValue(ref(db, '.info/serverTimeOffset'), s => { offset = s.val() || 0; });
+onValue(ref(db, '.info/connected'), s => { const on = !!s.val(); $('net').classList.toggle('on', on); $('netTxt').textContent = on ? 'Online' : 'Offline: reconnecting…'; });
+onValue(ref(db, 'pc/current'), s => {
+  cur = s.val();
+  const sid = cur && cur.sid ? String(cur.sid) : null;
+  if (sid !== subsSid) {
+    if (unsubSubs) unsubSubs(); if (unsubRel) unsubRel(); subs = {}; rel = {}; subsSid = sid; unsubSubs = null; unsubRel = null;
+    if (sid) {
+      unsubSubs = onValue(ref(db, `pc/sessions/${sid}/subs`), x => { subs = x.val() || {}; renderBoard(); });
+      unsubRel = onValue(ref(db, `pc/sessions/${sid}/rel`), x => { rel = x.val() || {}; renderBoard(); });
+    }
+  }
+  renderStatus(); renderBoard();
+});
+const mySession = () => cur && cur.sid && String(cur.sid) === String(S.sid);
+
+// ---------- setup UI ----------
+function renderSetup(){
+  normalise(); saveS();
+  $('nPics').value = S.nPics; $('nTables').value = S.nTables; $('mins').value = S.mins;
+  $('pics').innerHTML = S.pics.map((p, i) => `<div class="pic"><div class="head"><b>Picture ${i + 1}</b>
+      <label class="field">Correct answer <select data-ans="${i}" aria-label="Correct answer for picture ${i + 1}">${LETTERS.split('').map(l => `<option${p.ans === l ? ' selected' : ''}>${l}</option>`).join('')}</select></label></div>
+      <div class="imgrow">${IMG[i] ? `<img src="${IMG[i]}" alt="Picture ${i + 1} preview">` : '<span>No picture yet</span>'}
+        <label class="btn ghost" style="padding:8px 16px">Choose picture<input type="file" accept="image/*" data-img="${i}" hidden></label>
+        ${IMG[i] ? `<button class="btn ghost" type="button" style="padding:8px 16px" data-rmimg="${i}">Remove</button>` : ''}</div>
+      <div class="opts" style="margin-top:12px">${LETTERS.split('').map((l, k) => `<label>${l}<input type="text" data-p="${i}" data-k="${k}" value="${esc(p.opts[k])}" placeholder="${k === 3 ? '(optional)' : 'Option ' + l}" aria-label="Picture ${i + 1} option ${l}"></label>`).join('')}</div></div>`).join('');
+  $('pins').innerHTML = Array.from({ length: S.nTables }, (_, k) => k + 1).map(t => `<label>Table ${t}<input type="text" inputmode="numeric" maxlength="4" data-pin="${t}" value="${esc(S.pins[t])}"></label>`).join('');
+  renderStatus();
+}
+function renderStatus(){
+  const el = $('sessStatus'); if (!el) return;
+  if (!cur || !cur.sid) { el.innerHTML = 'No round has been started yet. Click <b>Start a fresh round</b> when your options and PINs are ready.'; return; }
+  const n = Object.keys(subs).length;
+  const state = cur.open ? 'open for submissions' : cur.openedAt ? 'closed' : 'ready, not opened yet';
+  el.innerHTML = mySession()
+    ? `A round is set up and <b>${state}</b>. <b>${n}</b> of ${cur.tables} tables have submitted. Starting a fresh round clears all submissions (use this after your rehearsal).`
+    : `A round was started from a different laptop or browser. This laptop doesn't have its PINs or answer key, so start a fresh round from here.`;
+}
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.p !== undefined) { S.pics[+t.dataset.p].opts[+t.dataset.k] = t.value; saveS(); }
+  else if (t.dataset.pin !== undefined) { t.value = t.value.replace(/\D/g, '').slice(0, 4); S.pins[t.dataset.pin] = t.value; saveS(); }
+  else if (t.id === 'nPics') { S.nPics = Math.max(1, Math.min(6, +t.value || 3)); renderSetup(); }
+  else if (t.id === 'nTables') { S.nTables = Math.max(1, Math.min(12, +t.value || 8)); renderSetup(); }
+  else if (t.id === 'mins') { S.mins = Math.max(1, Math.min(30, +t.value || 8)); saveS(); }
+});
+document.addEventListener('change', async e => {
+  const t = e.target;
+  if (t.dataset.ans !== undefined) { S.pics[+t.dataset.ans].ans = t.value; saveS(); }
+  if (t.dataset.img !== undefined && t.files && t.files[0]) {
+    try { const d = await shrink(t.files[0]); if (!setImg(+t.dataset.img, d)) setMsg('setupMsg', 'That picture is too large to store. Try a smaller image.', false); }
+    catch (err) { setMsg('setupMsg', 'Could not read that image file.', false); }
+    renderSetup();
+  }
+});
+document.addEventListener('click', e => { const b = e.target.closest('[data-rmimg]'); if (b) { setImg(+b.dataset.rmimg, ''); renderSetup(); } });
+$('genPins').onclick = () => { S.pins = {}; normalise(); saveS(); renderSetup(); setMsg('setupMsg', 'New PINs generated. Remember to reprint the cards.', true); };
+$('printPins').onclick = () => {
+  if (!validPins()) return;
+  $('print').innerHTML = Array.from({ length: S.nTables }, (_, k) => k + 1).map(t => `<div class="pcard">
+      <div><div class="k">Game 01 · Picture This</div><div class="tn">Table ${t}</div></div>
+      <div><div class="pl">Your table PIN</div><div class="pn">${esc(S.pins[t])}</div></div>
+      <div class="hint">Scan the QR code on screen, choose Table ${t} and enter this PIN. Each table gets one entry, so agree on your answers first.</div></div>`).join('');
+  window.print();
+};
+function setMsg(id, t, ok){ $(id).textContent = t; $(id).className = 'msg' + (ok ? ' ok' : ''); }
+function validPins(){
+  const vals = Array.from({ length: S.nTables }, (_, k) => S.pins[k + 1] || '');
+  if (vals.some(v => !/^\d{4}$/.test(v))) { setMsg('setupMsg', 'Every table needs a 4-digit PIN.', false); return false; }
+  if (new Set(vals).size !== vals.length) { setMsg('setupMsg', 'Two tables have the same PIN. Give each table its own.', false); return false; }
+  return true;
+}
+function validOpts(){
+  for (let i = 0; i < S.nPics; i++) {
+    const p = S.pics[i];
+    if (!p.opts[0].trim() || !p.opts[1].trim()) { setMsg('setupMsg', `Picture ${i + 1} needs at least options A and B.`, false); return false; }
+    if (!p.opts[LETTERS.indexOf(p.ans)].trim()) { setMsg('setupMsg', `Picture ${i + 1}: the correct answer (${p.ans}) is blank.`, false); return false; }
+  }
+  return true;
+}
+const publicOpts = () => S.pics.map(p => p.opts.map(o => o.trim()));   // options only, never the answer key
+
+let armed = 0;
+$('newSession').onclick = async () => {
+  if (!validOpts() || !validPins()) return;
+  if (cur && cur.sid && Date.now() - armed > 4000) { armed = Date.now(); $('newSession').textContent = 'Click again to clear and restart'; setTimeout(() => { $('newSession').textContent = 'Start a fresh round'; }, 4000); return; }
+  armed = 0; $('newSession').textContent = 'Start a fresh round';
+  const sid = String(Date.now());
+  try {
+    const pins = {}; for (let t = 1; t <= S.nTables; t++) pins[t] = S.pins[t];
+    await update(ref(db, `pc/sessions/${sid}/pins`), pins);
+    const rels = {}; for (let t = 1; t <= S.nTables; t++) rels[t] = 0;
+    await update(ref(db, `pc/sessions/${sid}/rel`), rels);
+    await set(ref(db, 'pc/current'), { sid, open: false, tables: S.nTables, mins: S.mins, qs: publicOpts() });
+    S.sid = sid; saveS(); setMsg('setupMsg', 'Round ready. Open the live board when you are ready to start.', true);
+    show('board'); renderBoard();
+  } catch (err) { setMsg('setupMsg', 'Could not reach Firebase: ' + err.message + '. Have you published the database rules?', false); }
+};
+$('pushOpts').onclick = async () => {
+  if (!mySession()) { setMsg('setupMsg', 'Start a fresh round first.', false); return; }
+  if (!validOpts()) return;
+  try { await update(ref(db, 'pc/current'), { qs: publicOpts(), mins: S.mins }); setMsg('setupMsg', 'Options updated on everyone\'s phones.', true); }
+  catch (err) { setMsg('setupMsg', 'Could not update: ' + err.message, false); }
+};
+$('toBoard').onclick = () => { if (!mySession()) { setMsg('setupMsg', 'Start a fresh round first.', false); return; } show('board'); renderBoard(); };
+
+// ---------- board ----------
+const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+function phase(){
+  if (!cur || !cur.sid) return 'none';
+  if (cur.open) return now() >= cur.closesAt ? 'expired' : 'open';
+  return cur.openedAt ? 'closed' : 'ready';
+}
+let seen = null, qrDrawn = '';
+function renderBoard(){
+  renderStatus();
+  if (view !== 'board' || !cur) return;
+  const n = cur.tables || S.nTables, got = Object.keys(subs).length;
+  // pictures
+  const np = S.nPics;
+  $('picsRow').style.setProperty('--np', np);
+  const sig = IMG.slice(0, np).map(x => x.length).join(',');
+  if ($('picsRow').dataset.sig !== sig) {
+    $('picsRow').dataset.sig = sig;
+    $('picsRow').innerHTML = Array.from({ length: np }, (_, i) => `<div class="pframe"><div class="pi">${IMG[i] ? `<img src="${IMG[i]}" alt="Picture ${i + 1}">` : `<div class="ph">Picture ${i + 1}: choose an image in Setup</div>`}</div><div class="pb">${i + 1}</div></div>`).join('');
+  }
+  // arrival order
+  const ver = t => (rel && rel[t]) || 0;
+  const amending = t => subs[t] && (subs[t].v || 0) < ver(t);
+  const order = Object.keys(subs).filter(t => !amending(t)).sort((a, b) => subs[a].at - subs[b].at || a - b);
+  const tag = t => t + ':' + (subs[t].v || 0);
+  const fresh = seen ? order.filter(t => !seen.has(tag(t))) : [];
+  seen = new Set(order.map(tag));
+  const ord = k => k === 1 ? '1st' : k === 2 ? '2nd' : k === 3 ? '3rd' : k + 'th';
+  $('chips').style.setProperty('--nt', n);
+  $('chips').innerHTML = Array.from({ length: n }, (_, k) => String(k + 1)).map(t => {
+    const sb = subs[t], pos = order.indexOf(t), am = amending(t);
+    const st = sb ? (cur.openedAt ? mmss(sb.at - cur.openedAt) : '✓') : 'Waiting…';
+    if (am) return `<div class="chip amend"><span class="pos">Amending</span><div class="n">TABLE</div><div class="big">${t}</div><div class="st">Changing answers…</div></div>`;
+    return `<div class="chip ${sb ? 'in' : 'wait'}${fresh.includes(t) ? ' pop' : ''}"${sb ? ` data-amend="${t}" title="Click to let Table ${t} change their answers"` : ''}>${sb ? `<span class="pos">${ord(pos + 1)} in${sb.v ? ' · amended' : ''}</span>` : ''}
+      <div class="n">TABLE</div><div class="big">${t}</div><div class="st">${sb ? '✓ ' + st : st}</div></div>`;
+  }).join('');
+  $('count').innerHTML = got === n ? `<b>All ${n} tables</b> are in!` : `<b>${got}</b> of ${n} tables have submitted`;
+  if (fresh.length) { const t = fresh[fresh.length - 1]; toast(subs[t].v ? `Table ${t} has resubmitted!` : `Table ${t} is in!`); chime(order.indexOf(t)); }
+  if (qrDrawn !== joinURL()) {
+    qrDrawn = joinURL(); $('qrM').innerHTML = '';
+    try { new QRCode($('qrM'), { text: joinURL(), width: 120, height: 120, colorDark: '#0F1B2D', colorLight: '#FFFFFF', correctLevel: QRCode.CorrectLevel.M }); } catch (e) { $('qrM').textContent = 'QR'; }
+  }
+  tick();
+}
+let toastT = null;
+function toast(msg){ const el = $('toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 2200); }
+let actx = null;
+function chime(k){
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume();
+    const base = [784, 880, 988, 1047, 1175, 1319, 1397, 1568][k % 8];
+    [[base, 0], [base * 1.5, 0.12]].forEach(([f, w]) => { const t = actx.currentTime + w, o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'triangle'; o.frequency.value = f; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+      o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.55); });
+  } catch (e) {}
+}
+let idleT = null;
+const wake = () => { document.body.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(() => { if (view === 'board') document.body.classList.add('idle'); }, 3000); };
+['mousemove', 'mousedown', 'touchstart'].forEach(ev => document.addEventListener(ev, wake, { passive: true }));
+function tick(){
+  const ph = phase(), c = $('clock');
+  if (ph === 'expired') { closeRound(true); }
+  c.className = ph === 'open' ? ('open' + (cur.closesAt - now() <= 60000 ? ' hurry' : '')) : (ph === 'closed' || ph === 'expired') ? 'closed' : '';
+  $('clockT').textContent = ph === 'open' ? mmss(cur.closesAt - now()) : ph === 'ready' ? mmss((cur.mins || S.mins) * 60000) : (ph === 'closed' || ph === 'expired') ? "Time's up" : '--:--';
+  $('clockS').textContent = ph === 'open' ? 'Submissions open' : ph === 'ready' ? 'Not started' : (ph === 'closed' || ph === 'expired') ? 'Submissions closed' : '';
+  $('openBtn').textContent = ph === 'closed' ? 'Reopen (1 min)' : 'Open submissions';
+  $('openBtn').disabled = ph === 'open' || ph === 'expired';
+  $('closeBtn').disabled = ph !== 'open';
+}
+setInterval(() => { if (view === 'board') tick(); }, 250);
+
+let closing = false;
+async function closeRound(auto){
+  if (closing || !cur || !cur.open) return; closing = true;
+  try { await update(ref(db, 'pc/current'), { open: false }); if (!auto) setMsg('boardMsg', '', true); }
+  catch (err) { setMsg('boardMsg', 'Could not close: ' + err.message, false); }
+  closing = false;
+}
+async function openRound(){
+  const ph = phase(); if (ph === 'open' || ph === 'none') return;
+  const extra = ph === 'closed' ? 60000 : (cur.mins || S.mins) * 60000;
+  const patch = { open: true, closesAt: now() + extra };
+  if (!cur.openedAt) patch.openedAt = serverTimestamp();
+  try { await update(ref(db, 'pc/current'), patch); setMsg('boardMsg', '', true); }
+  catch (err) { setMsg('boardMsg', 'Could not open: ' + err.message, false); }
+}
+$('openBtn').onclick = openRound;
+$('closeBtn').onclick = () => closeRound(false);
+$('resultsBtn').onclick = () => showResults();
+$('setupBtn').onclick = () => { show('setup'); renderSetup(); };
+$('qrBtn').onclick = toggleQR;
+
+// ---------- amendments ----------
+let amendT = null;
+document.addEventListener('click', e => {
+  const c = e.target.closest('[data-amend]'); if (!c || view !== 'board') return;
+  if (phase() !== 'open') { setMsg('boardMsg', 'Tables can only amend while submissions are open. Reopen the round first if you need to.', false); return; }
+  amendT = c.dataset.amend;
+  $('amendTitle').textContent = `Let Table ${amendT} change their answers?`;
+  $('amendText').textContent = `Their phone will show a "Change answers" button. Whatever they submit next replaces their current entry, and the new submission time counts. If they don't resubmit before time's up, their current answers stand.`;
+  $('amendDlg').classList.remove('hidden');
+});
+$('amendNo').onclick = () => { $('amendDlg').classList.add('hidden'); amendT = null; };
+$('amendYes').onclick = async () => {
+  const t = amendT; $('amendDlg').classList.add('hidden'); amendT = null; if (!t) return;
+  try { await set(ref(db, `pc/sessions/${cur.sid}/rel/${t}`), ((rel && rel[t]) || 0) + 1); setMsg('boardMsg', `Table ${t} can now change their answers.`, true); }
+  catch (err) { setMsg('boardMsg', 'Could not reopen that table: ' + err.message, false); }
+};
+
+// ---------- results ----------
+let ranked = [], revealed = 0, lastAns = {}, lastHist = {};
+const ord = n2 => n2 === 1 ? '1st' : n2 === 2 ? '2nd' : n2 === 3 ? '3rd' : n2 + 'th';
+const exact = ms => { const d = new Date(ms); return d.toLocaleTimeString('en-SG', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0'); };
+const secs = ms => (ms / 1000).toFixed(1) + 's';
+function overrides(){ S.overrides = S.overrides || {}; return (S.overrides[cur.sid] = S.overrides[cur.sid] || {}); }
+const isAcc = (t, i) => !!(overrides()[t] && overrides()[t][i]);
+async function showResults(){
+  if (phase() === 'open') { setMsg('boardMsg', 'Close submissions first. Answers stay locked while the round is open.', false); return; }
+  if (!mySession()) { setMsg('boardMsg', 'This laptop does not have the answer key for this round.', false); return; }
+  try {
+    lastAns = (await get(ref(db, `pc/sessions/${cur.sid}/ans`))).val() || {};
+    lastHist = (await get(ref(db, `pc/sessions/${cur.sid}/hist`))).val() || {};
+  }
+  catch (err) { setMsg('boardMsg', 'Could not load answers: ' + err.message, false); return; }
+  buildResults(); revealed = 0; applyVeil(); setMsg('resMsg', '', true);
+  $('key').classList.add('hidden');
+  show('results');
+}
+function computeRanked(){
+  const key = S.pics.map(p => p.ans), n = cur.tables || S.nTables;
+  return Array.from({ length: n }, (_, k) => k + 1).map(t => {
+    const s2 = subs[t], a = lastAns[t] && lastAns[t].a;
+    if (!s2 || !a) return { t, none: true };
+    const right = key.map((k2, i) => a[i] === k2), acc = key.map((_, i) => !right[i] && isAcc(t, i));
+    const marks = right.map((r, i) => r || acc[i]);
+    const h = lastHist[t] ? Object.values(lastHist[t]).filter(Boolean).sort((x, y) => x.v - y.v) : [];
+    const prev = h.filter(x => x.v < (s2.v || 0));
+    const pending = (rel[t] || 0) > (s2.v || 0);              // reopened but never resubmitted: earlier answers stand
+    return { t, a, right, acc, marks, prev, pending, score: marks.filter(Boolean).length, at: s2.at, ms: cur.openedAt ? s2.at - cur.openedAt : 0 };
+  }).sort((x, y) => (!!x.none - !!y.none) || (y.score - x.score) || (x.ms - y.ms) || (x.t - y.t));
+}
+function buildResults(){
+  const key = S.pics.map(p => p.ans);
+  ranked = computeRanked();
+  $('rrows').innerHTML = ranked.map((r, i) => r.none
+    ? `<tr class="none" data-i="${i}"><td>–</td><td class="tb">Table ${r.t}</td><td class="sc">–</td><td class="marks"></td><td>No entry</td></tr>`
+    : `<tr class="${i === 0 ? 'first' : ''}" data-i="${i}"><td>${ord(i + 1)}</td><td class="tb">Table ${r.t}</td><td class="sc">${r.score} / ${key.length}</td>
+       <td class="marks">${r.marks.map(m => `<span class="${m ? 'ok' : 'no'}">${m ? '✓' : '✗'}</span>`).join('')}</td><td>${mmss(r.ms)}</td></tr>`).join('');
+  $('key').innerHTML = S.pics.map((p, i) => `<div><b>Picture ${i + 1}</b>${esc(p.ans)}. ${esc(p.opts[LETTERS.indexOf(p.ans)])}</div>`).join('');
+  applyVeil();
+}
+const optText = (i, l) => { const p = S.pics[i]; const k = LETTERS.indexOf(l); return p && k >= 0 ? (p.opts[k] || '') : ''; };
+function renderEntries(){
+  const np = S.pics.length, n = cur.tables || S.nTables;
+  const place = {}; ranked.forEach((r, i) => { if (!r.none) place[r.t] = i + 1; });
+  const byT = {}; ranked.forEach(r => { byT[r.t] = r; });
+  $('ehead').innerHTML = `<tr><th>Table</th>${S.pics.map((_, i) => `<th>Picture ${i + 1}</th>`).join('')}<th>Score</th><th>Place</th><th>Submitted at</th><th>Time taken</th></tr>`;
+  const keyRow = `<tr class="keyrow"><td>Correct</td>${S.pics.map((p, i) => `<td><div class="cell"><span class="lt">${esc(p.ans)}</span><span class="tx">${esc(optText(i, p.ans))}</span></div></td>`).join('')}<td></td><td></td><td></td><td></td></tr>`;
+  const rows = Array.from({ length: n }, (_, k) => k + 1).map(t => {
+    const r = byT[t];
+    if (!r || r.none) return `<tr class="none"><td>Table ${t}</td>${S.pics.map(() => '<td></td>').join('')}<td class="mono">–</td><td class="mono">–</td><td class="mono">No entry</td><td class="mono"></td></tr>`;
+    const cells = S.pics.map((_, i) => {
+      const l = r.a[i] || '-', cls = r.right[i] ? 'ok' : r.acc[i] ? 'acc' : 'no';
+      const tag = r.right[i] ? 'div' : 'button type="button"';
+      return `<td><${tag} class="cell ${cls}"${r.right[i] ? '' : ` data-ov="${t}:${i}" title="${r.acc[i] ? 'Click to undo' : 'Click to accept this answer'}"`}><span class="lt">${esc(l)}</span><span class="tx">${esc(optText(i, l))}</span>
+        <span class="mk">${r.right[i] ? '✓' : r.acc[i] ? '✓' : '✗'}</span></${r.right[i] ? 'div' : 'button'}>${r.acc[i] ? '<div class="acclabel">ACCEPTED BY HOST</div>' : ''}</td>`;
+    }).join('');
+    const hl = r.prev.map(x => `<div class="histline">Earlier: ${S.pics.map((_, i) => esc((x.a && x.a[i]) || '-')).join(' ')} at ${exact(x.at)}</div>`).join('')
+      + (r.pending ? '<div class="histline">Reopened, no resubmission: earlier answers stand</div>' : '');
+    return `<tr><td>Table ${t}${hl}</td>${cells}<td class="mono"><b>${r.score} / ${np}</b></td><td class="mono"><b>${ord(place[t])}</b></td><td class="mono">${exact(r.at)}</td><td class="mono">${secs(r.ms)}</td></tr>`;
+  }).join('');
+  $('erows').innerHTML = keyRow + rows;
+}
+function showEntries(){ renderEntries(); setMsg('entMsg', '', true); show('entries'); }
+document.addEventListener('click', e => {
+  const c = e.target.closest('[data-ov]'); if (!c) return;
+  const [t, i] = c.dataset.ov.split(':'); const o = overrides();
+  o[t] = o[t] || {}; if (o[t][i]) delete o[t][i]; else o[t][i] = true;
+  saveS(); buildResults(); renderEntries();
+  setMsg('entMsg', o[t][i] ? `Accepted Table ${t}'s answer for picture ${+i + 1}. Scores and places updated.` : `Undone: Table ${t}, picture ${+i + 1} is back to ✗.`, true);
+});
+function csv(){
+  const np = S.pics.length, q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const head = ['Place', 'Table', 'Score', 'Submitted at (server time)', 'Time taken (s)', 'Amendments'];
+  S.pics.forEach((p, i) => head.push(`Picture ${i + 1} answer`, `Picture ${i + 1} option`, `Picture ${i + 1} result`));
+  const lines = [head.map(q).join(',')];
+  lines.push(['', 'Correct answers', '', '', '', ''].concat(...S.pics.map((p, i) => [p.ans, optText(i, p.ans), ''])).map(q).join(','));
+  ranked.forEach((r, k) => {
+    if (r.none) { lines.push(['', `Table ${r.t}`, '', 'No entry', '', ''].concat(...S.pics.map(() => ['', '', ''])).map(q).join(',')); return; }
+    const amendTxt = r.prev.map(x => `Earlier: ${S.pics.map((_, i) => (x.a && x.a[i]) || '-').join(' ')} at ${exact(x.at)}`).concat(r.pending ? ['Reopened, no resubmission'] : []).join('; ');
+    const row = [ord(k + 1), `Table ${r.t}`, `${r.score}/${np}`, new Date(r.at).toLocaleDateString('en-SG') + ' ' + exact(r.at), (r.ms / 1000).toFixed(3), amendTxt];
+    S.pics.forEach((p, i) => row.push(r.a[i] || '', optText(i, r.a[i]), r.right[i] ? 'Correct' : r.acc[i] ? 'Accepted by host' : 'Wrong'));
+    lines.push(row.map(q).join(','));
+  });
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `picture-this-results-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.csv`;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  setMsg('entMsg', 'CSV downloaded.', true);
+}
+$('csvBtn').onclick = csv;
+$('backRes').onclick = () => { show('results'); };
+function applyVeil(){
+  const entries = ranked.filter(r => !r.none).length;
+  document.querySelectorAll('#rrows tr').forEach(tr => {
+    const i = +tr.dataset.i, hidden = i < entries && i < entries - revealed;   // reveal from last place up to 1st
+    tr.classList.toggle('veil', hidden);
+  });
+}
+
+// ---------- QR ----------
+const joinURL = () => new URL('picture.html', location.href).href;
+function toggleQR(){
+  const o = $('qrOverlay'); o.classList.toggle('hidden');
+  if (!o.classList.contains('hidden')) {
+    $('qr').innerHTML = ''; $('qrUrl').textContent = joinURL();
+    try { new QRCode($('qr'), { text: joinURL(), width: 320, height: 320, colorDark: '#0F1B2D', colorLight: '#FFFFFF', correctLevel: QRCode.CorrectLevel.M }); }
+    catch (e) { $('qr').textContent = joinURL(); }
+  }
+}
+$('qrOverlay').onclick = toggleQR;
+function fullscreen(){ try { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{}); else document.exitFullscreen().catch(()=>{}); } catch(e){} }
+
+document.addEventListener('keydown', e => {
+  if (e.repeat || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+  if (e.code === 'KeyF') { fullscreen(); return; }
+  if (e.code === 'KeyQ') { toggleQR(); return; }
+  if (view === 'board') {
+    if (e.code === 'KeyO') openRound();
+    else if (e.code === 'KeyC') closeRound(false);
+    else if (e.code === 'KeyR') showResults();
+    else if (e.code === 'Escape') { show('setup'); renderSetup(); }
+  } else if (view === 'results') {
+    const entries = ranked.filter(r => !r.none).length;
+    if (e.code === 'Space') { e.preventDefault(); revealed = Math.min(entries, revealed + 1); applyVeil(); }
+    else if (e.code === 'KeyV') { revealed = entries; applyVeil(); }
+    else if (e.code === 'KeyA') $('key').classList.toggle('hidden');
+    else if (e.code === 'KeyE') showEntries();
+    else if (e.code === 'KeyB' || e.code === 'Escape') { show('board'); renderBoard(); }
+  } else if (view === 'entries') {
+    if (e.code === 'KeyB' || e.code === 'Escape') show('results');
+  }
+});
+
+renderSetup();
+</script>
+</body>
+</html>
