@@ -58,6 +58,8 @@
   @keyframes hurry{50%{opacity:.45}}
   #picsRow{display:grid;grid-template-columns:repeat(var(--np,3),minmax(0,1fr));gap:2vw;flex:none;padding-top:10px}
   .pframe{position:relative;aspect-ratio:3/2}
+  .pcol{display:flex;flex-direction:column;gap:1.2vh;min-width:0}
+  .pcap{font-size:clamp(16px,1.5vw,26px);font-weight:700;line-height:1.25;text-align:center;color:var(--cream)}
   .pframe .pi{position:absolute;inset:0;border-radius:22px;overflow:hidden;background:#0A1422;border:1.5px solid var(--line)}
   .pframe img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
   .pframe .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);color:var(--muted);font-size:clamp(16px,1.4vw,22px)}
@@ -185,7 +187,7 @@
       <label class="field">Time limit (minutes) <input type="number" id="mins" min="1" max="30"></label>
     </div>
 
-    <h3>Pictures and answer options</h3>
+    <h3>Pictures, questions and answer options</h3>
     <p>Choose the image for each picture: it shows on the live board while tables answer. Leave option D blank if a picture only has three choices. Pick the correct letter on the right.</p>
     <div id="pics"></div>
 
@@ -202,7 +204,7 @@
     <div class="msg" id="setupMsg" role="status"></div>
     <div class="row" style="margin:14px 0 6vh">
       <button class="btn primary" id="newSession" type="button">Start a fresh round</button>
-      <button class="btn ghost" id="pushOpts" type="button">Update options on phones</button>
+      <button class="btn ghost" id="pushOpts" type="button">Update questions on phones</button>
       <button class="btn ghost" id="toBoard" type="button">Go to the live board</button>
     </div>
   </div>
@@ -353,6 +355,7 @@ function renderSetup(){
   $('nPics').value = S.nPics; $('nTables').value = S.nTables; $('mins').value = S.mins;
   $('pics').innerHTML = S.pics.map((p, i) => `<div class="pic"><div class="head"><b>Picture ${i + 1}</b>
       <label class="field">Correct answer <select data-ans="${i}" aria-label="Correct answer for picture ${i + 1}">${LETTERS.split('').map(l => `<option${p.ans === l ? ' selected' : ''}>${l}</option>`).join('')}</select></label></div>
+      <label class="field" style="display:flex;margin-bottom:6px">Question<input type="text" data-qt="${i}" value="${esc(p.q || '')}" placeholder="e.g. What is in Picture ${i + 1}?" style="flex:1;min-width:0" aria-label="Question for picture ${i + 1}"></label>
       <div class="imgrow">${IMG[i] ? `<img src="${IMG[i]}" alt="Picture ${i + 1} preview">` : '<span>No picture yet</span>'}
         <label class="btn ghost" style="padding:8px 16px">Choose picture<input type="file" accept="image/*" data-img="${i}" hidden></label>
         ${IMG[i] ? `<button class="btn ghost" type="button" style="padding:8px 16px" data-rmimg="${i}">Remove</button>` : ''}</div>
@@ -372,6 +375,7 @@ function renderStatus(){
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.dataset.p !== undefined) { S.pics[+t.dataset.p].opts[+t.dataset.k] = t.value; saveS(); }
+  else if (t.dataset.qt !== undefined) { S.pics[+t.dataset.qt].q = t.value; saveS(); }
   else if (t.dataset.pin !== undefined) { t.value = t.value.replace(/\D/g, '').slice(0, 4); S.pins[t.dataset.pin] = t.value; saveS(); }
   else if (t.id === 'nPics') { S.nPics = Math.max(1, Math.min(6, +t.value || 3)); renderSetup(); }
   else if (t.id === 'nTables') { S.nTables = Math.max(1, Math.min(12, +t.value || 8)); renderSetup(); }
@@ -412,6 +416,7 @@ function validOpts(){
   return true;
 }
 const publicOpts = () => S.pics.map(p => p.opts.map(o => o.trim()));   // options only, never the answer key
+const publicQs = () => S.pics.map((p, i) => (p.q || '').trim() || `Picture ${i + 1}`);
 
 let armed = 0;
 $('newSession').onclick = async () => {
@@ -424,7 +429,7 @@ $('newSession').onclick = async () => {
     await update(ref(db, `pc/sessions/${sid}/pins`), pins);
     const rels = {}; for (let t = 1; t <= S.nTables; t++) rels[t] = 0;
     await update(ref(db, `pc/sessions/${sid}/rel`), rels);
-    await set(ref(db, 'pc/current'), { sid, open: false, tables: S.nTables, mins: S.mins, qs: publicOpts() });
+    await set(ref(db, 'pc/current'), { sid, open: false, tables: S.nTables, mins: S.mins, qs: publicOpts(), qt: publicQs() });
     S.sid = sid; saveS(); setMsg('setupMsg', 'Round ready. Open the live board when you are ready to start.', true);
     show('board'); renderBoard();
   } catch (err) { setMsg('setupMsg', 'Could not reach Firebase: ' + err.message + '. Have you published the database rules?', false); }
@@ -432,7 +437,7 @@ $('newSession').onclick = async () => {
 $('pushOpts').onclick = async () => {
   if (!mySession()) { setMsg('setupMsg', 'Start a fresh round first.', false); return; }
   if (!validOpts()) return;
-  try { await update(ref(db, 'pc/current'), { qs: publicOpts(), mins: S.mins }); setMsg('setupMsg', 'Options updated on everyone\'s phones.', true); }
+  try { await update(ref(db, 'pc/current'), { qs: publicOpts(), qt: publicQs(), mins: S.mins }); setMsg('setupMsg', 'Questions and options updated on everyone\'s phones.', true); }
   catch (err) { setMsg('setupMsg', 'Could not update: ' + err.message, false); }
 };
 $('toBoard').onclick = () => { if (!mySession()) { setMsg('setupMsg', 'Start a fresh round first.', false); return; } show('board'); renderBoard(); };
@@ -452,10 +457,10 @@ function renderBoard(){
   // pictures
   const np = S.nPics;
   $('picsRow').style.setProperty('--np', np);
-  const sig = IMG.slice(0, np).map(x => x.length).join(',');
+  const sig = IMG.slice(0, np).map(x => x.length).join(',') + '|' + S.pics.map(p => p.q || '').join('|');
   if ($('picsRow').dataset.sig !== sig) {
     $('picsRow').dataset.sig = sig;
-    $('picsRow').innerHTML = Array.from({ length: np }, (_, i) => `<div class="pframe"><div class="pi">${IMG[i] ? `<img src="${IMG[i]}" alt="Picture ${i + 1}">` : `<div class="ph">Picture ${i + 1}: choose an image in Setup</div>`}</div><div class="pb">${i + 1}</div></div>`).join('');
+    $('picsRow').innerHTML = Array.from({ length: np }, (_, i) => `<div class="pcol"><div class="pframe"><div class="pi">${IMG[i] ? `<img src="${IMG[i]}" alt="Picture ${i + 1}">` : `<div class="ph">Picture ${i + 1}: choose an image in Setup</div>`}</div><div class="pb">${i + 1}</div></div>${(S.pics[i].q || '').trim() ? `<div class="pcap">${esc(S.pics[i].q.trim())}</div>` : ''}</div>`).join('');
   }
   // arrival order
   const ver = t => (rel && rel[t]) || 0;

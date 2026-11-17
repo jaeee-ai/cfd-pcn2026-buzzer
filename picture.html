@@ -86,7 +86,7 @@
 <section id="sQuiz" class="hidden">
   <div class="label" id="quizLabel"></div>
   <h1>What are these?</h1>
-  <p>Pick one answer for each picture on the screen.</p>
+  <p>Look at the pictures on the big screen, then pick one answer for each question.</p>
   <div id="qs"></div>
   <button class="btn primary" id="review" type="button" disabled>Review answers</button>
   <button class="link" type="button" data-back="pin">Back</button>
@@ -195,6 +195,7 @@ const isIn = t => !!(subs[t] && (subs[t].v || 0) >= ver(t));         // has a cu
 const isReopened = t => !!(subs[t] && (subs[t].v || 0) < ver(t));     // host let this table amend
 function show(id){ for (const s of ['sWait','sTable','sPin','sQuiz','sConfirm','sDone','sLocked','sAmend']) $(s).classList.toggle('hidden', s !== id); window.scrollTo(0, 0); }
 function qList(){ return (cur && cur.qs) ? cur.qs : []; }
+const qTitle = i => (cur && cur.qt && cur.qt[i]) || `Picture ${i + 1}`;
 function allAnswered(){ const n = qList().length; return n > 0 && qList().every((q, i) => answers[i]); }
 function optText(i, l){ const q = qList()[i]; const k = LETTERS.indexOf(l); return q && q[k] ? q[k] : ''; }
 function summaryHTML(a){ return qList().map((q, i) => `<div><span>${i + 1}.</span><span>${esc(a[i] || '-')}</span>${esc(optText(i, a[i]))}</div>`).join(''); }
@@ -237,7 +238,7 @@ function render(){
   }
   if (step === 'quiz') {
     $('quizLabel').textContent = `Table ${table}`;
-    $('qs').innerHTML = qList().map((q, i) => `<div class="q"><div class="qh"><span class="num">${i + 1}</span>Picture ${i + 1}</div>` +
+    $('qs').innerHTML = qList().map((q, i) => `<div class="q"><div class="qh"><span class="num">${i + 1}</span><span>${esc(qTitle(i))}</span></div>` +
       q.map((o, k) => o ? `<button type="button" class="opt${answers[i] === LETTERS[k] ? ' on' : ''}" data-q="${i}" data-l="${LETTERS[k]}"><span class="l">${LETTERS[k]}</span><span>${esc(o)}</span></button>` : '').join('') + '</div>').join('');
     $('review').disabled = !allAnswered();
     show('sQuiz'); return;
