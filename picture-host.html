@@ -61,6 +61,8 @@
   #picsRow{display:grid;grid-template-columns:repeat(var(--np,3),minmax(0,1fr));gap:2vw;flex:none;padding-top:10px}
   .pframe{position:relative;aspect-ratio:3/2}
   .pcol{display:flex;flex-direction:column;gap:1.2vh;min-width:0}
+  .ph.hold{flex-direction:column;gap:1vh;background:repeating-linear-gradient(135deg,#0F1B2D 0 18px,#132238 18px 36px)}
+  .ph.hold .qm{font-size:clamp(60px,7vw,120px);font-weight:800;color:var(--gold);line-height:1;font-family:var(--sans)}
   .pcap{font-size:clamp(16px,1.5vw,26px);font-weight:700;line-height:1.25;text-align:center;color:var(--cream)}
   .pframe .pi{position:absolute;inset:0;border-radius:22px;overflow:hidden;background:#0A1422;border:1.5px solid var(--line)}
   .pframe img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -388,8 +390,11 @@ function attachFirebase(){
 }
 function fbFail(kind, detail){
   fbState = 'failed';
+  const loaded = !!(window.FIREBASE_CONFIG && Object.keys(window.FIREBASE_CONFIG).length);
   const msg = kind === 'config'
-    ? `Firebase isn't set up correctly (${detail}). Check config.js is next to this page and has your databaseURL.`
+    ? (loaded
+        ? `config.js loaded, but Firebase rejected the settings in it (${detail}). Check it includes your databaseURL.`
+        : `config.js didn't load, so this page doesn't know which Firebase project to use. Make sure config.js is in the same folder as this page (open ${new URL('config.js', location.href).href} to check), then reload with Ctrl+Shift+R.`)
     : "Can't reach Firebase from this network: it may be blocking it (common on office or venue Wi-Fi). Setup still works and is saved on this laptop, but rounds can't start. Try another network, such as your phone's hotspot, then reload this page.";
   $('fbBanner').innerHTML = `<b>Not connected.</b> ${esc(msg)} <button type="button" class="btn ghost" onclick="location.reload()" style="padding:6px 14px;margin-left:8px">Reload</button>`;
   $('fbBanner').classList.remove('hidden');
@@ -503,11 +508,10 @@ $('newSession').onclick = async () => {
     stepName = 'set up the amend and reset counters';
     const rels = {}; for (let t = 1; t <= S.nTables; t++) rels[t] = 0;
     await update(ref(db, `pc/sessions/${sid}/rel`), rels);
-    stepName = "send the pictures to guests' phones";
-    await pushImgs(sid);
     stepName = 'publish the round';
-    await set(ref(db, 'pc/current'), { sid, open: false, tables: S.nTables, mins: S.mins, qs: publicOpts(), qt: publicQs(), staff: staffList() });
-    S.sid = sid; saveS(); setMsg('setupMsg', 'Round ready. Open the live board when you are ready to start.', true);
+    // Questions, options and pictures are NOT sent yet: phones get them only when the round opens (see openRound).
+    await set(ref(db, 'pc/current'), { sid, open: false, tables: S.nTables, mins: S.mins, staff: staffList() });
+    S.sid = sid; saveS(); setMsg('setupMsg', 'Round ready. Tables can check in now; the questions and pictures stay hidden until you open the round.', true);
     show('board'); renderBoard();
   } catch (err) {
     const denied = /permission/i.test(err.message || err.code || '');
@@ -520,7 +524,10 @@ $('pushOpts').onclick = async () => {
   if (!fbOK('setupMsg')) return;
   if (!mySession()) { setMsg('setupMsg', 'Start a fresh round first.', false); return; }
   if (!validOpts()) return;
-  try { await pushImgs(cur.sid); await update(ref(db, 'pc/current'), { qs: publicOpts(), qt: publicQs(), mins: S.mins, staff: staffList() }); setMsg('setupMsg', 'Pictures, questions and options updated on everyone\'s phones.', true); }
+  try {
+    if (cur.openedAt) { await pushImgs(cur.sid); await update(ref(db, 'pc/current'), { qs: publicOpts(), qt: publicQs(), mins: S.mins, staff: staffList() }); setMsg('setupMsg', 'Pictures, questions and options updated on everyone\'s phones.', true); }
+    else { await update(ref(db, 'pc/current'), { mins: S.mins, staff: staffList() }); setMsg('setupMsg', 'Saved. Questions and pictures stay hidden and go to phones when you open the round.', true); }
+  }
   catch (err) { setMsg('setupMsg', /permission/i.test(err.message || '') ? "Firebase refused the update. The published database rules are probably out of date: paste the latest database.rules.json into Realtime Database → Rules and click Publish." : 'Could not update: ' + err.message, false); }
 };
 $('toBoard').onclick = () => { if (!fbOK('setupMsg')) return; if (!mySession()) { setMsg('setupMsg', 'Start a fresh round first.', false); return; } show('board'); renderBoard(); };
@@ -540,10 +547,13 @@ function renderBoard(){
   // pictures
   const np = S.nPics;
   $('picsRow').style.setProperty('--np', np);
-  const sig = IMG.slice(0, np).map(x => x.length).join(',') + '|' + S.pics.map(p => p.q || '').join('|');
+  const revealed = !!cur.openedAt;
+  const sig = (revealed ? 'R' : 'H') + IMG.slice(0, np).map(x => x.length).join(',') + '|' + S.pics.map(p => p.q || '').join('|');
   if ($('picsRow').dataset.sig !== sig) {
     $('picsRow').dataset.sig = sig;
-    $('picsRow').innerHTML = Array.from({ length: np }, (_, i) => `<div class="pcol"><div class="pframe"><div class="pi">${IMG[i] ? `<img src="${IMG[i]}" alt="Picture ${i + 1}">` : `<div class="ph">Picture ${i + 1}: choose an image in Setup</div>`}</div><div class="pb">${i + 1}</div></div>${(S.pics[i].q || '').trim() ? `<div class="pcap">${esc(S.pics[i].q.trim())}</div>` : ''}</div>`).join('');
+    $('picsRow').innerHTML = !revealed
+      ? Array.from({ length: np }, (_, i) => `<div class="pcol"><div class="pframe"><div class="pi"><div class="ph hold"><span class="qm">?</span>Revealed when the round starts</div></div><div class="pb">${i + 1}</div></div></div>`).join('')
+      : Array.from({ length: np }, (_, i) => `<div class="pcol"><div class="pframe"><div class="pi">${IMG[i] ? `<img src="${IMG[i]}" alt="Picture ${i + 1}">` : `<div class="ph">Picture ${i + 1}: choose an image in Setup</div>`}</div><div class="pb">${i + 1}</div></div>${(S.pics[i].q || '').trim() ? `<div class="pcap">${esc(S.pics[i].q.trim())}</div>` : ''}</div>`).join('');
   }
   // arrival order
   const ver = t => (rel && rel[t]) || 0;
@@ -559,7 +569,7 @@ function renderBoard(){
     const sb = subs[t], pos = order.indexOf(t), am = amending(t);
     const st = sb ? (cur.openedAt ? mmss(sb.at - cur.openedAt) : '✓') : 'Waiting…';
     const answering = !sb && owner[t] && owner[t].gen === ver(t), stf = isStaff(t), lbl = stf ? 'STAFF' : 'TABLE';
-    if (answering) return `<div class="chip claimed${stf ? ' staff' : ''}" data-reset="${t}" title="Click to reset Table ${t}'s answering phone"><div class="n">${lbl}</div><div class="big">${t}</div><div class="st">Answering<span class="dots"></span></div></div>`;
+    if (answering) return `<div class="chip claimed${stf ? ' staff' : ''}" data-reset="${t}" title="Click to reset Table ${t}'s answering phone"><div class="n">${lbl}</div><div class="big">${t}</div><div class="st">${cur.openedAt ? 'Answering<span class="dots"></span>' : '✓ Checked in'}</div></div>`;
     if (am) return `<div class="chip amend${stf ? ' staff' : ''}"><span class="pos">Amending</span><div class="n">${lbl}</div><div class="big">${t}</div><div class="st">Changing answers…</div></div>`;
     const badge = sb ? (stf ? `<span class="pos stafftag">Staff · for fun</span>` : `<span class="pos">${ord(pos + 1)} in${sb.v ? ' · amended' : ''}</span>`) : '';
     return `<div class="chip ${sb ? 'in' : 'wait'}${stf ? ' staff' : ''}${fresh.includes(t) ? ' pop' : ''}"${sb ? ` data-amend="${t}" title="Click to let Table ${t} change their answers"` : ''}>${badge}
@@ -595,7 +605,7 @@ function tick(){
   $('clockT').textContent = ph === 'open' ? mmss(cur.closesAt - now()) : ph === 'ready' ? mmss((cur.mins || S.mins) * 60000) : (ph === 'closed' || ph === 'expired') ? "Time's up" : '--:--';
   $('clockS').textContent = ph === 'open' ? 'Submissions open' : ph === 'ready' ? 'Not started' : (ph === 'closed' || ph === 'expired') ? 'Submissions closed' : '';
   $('openBtn').textContent = ph === 'closed' ? 'Reopen (1 min)' : 'Open submissions';
-  $('openBtn').disabled = ph === 'open' || ph === 'expired';
+  $('openBtn').disabled = ph === 'open' || ph === 'expired' || opening;
   $('closeBtn').disabled = ph !== 'open';
 }
 setInterval(() => { if (view === 'board') tick(); }, 250);
@@ -607,13 +617,21 @@ async function closeRound(auto){
   catch (err) { setMsg('boardMsg', 'Could not close: ' + err.message, false); }
   closing = false;
 }
+let opening = false;
 async function openRound(){
-  const ph = phase(); if (ph === 'open' || ph === 'none') return;
-  const extra = ph === 'closed' ? 60000 : (cur.mins || S.mins) * 60000;
-  const patch = { open: true, closesAt: now() + extra };
-  if (!cur.openedAt) patch.openedAt = serverTimestamp();
-  try { await update(ref(db, 'pc/current'), patch); setMsg('boardMsg', '', true); }
-  catch (err) { setMsg('boardMsg', 'Could not open: ' + err.message, false); }
+  const ph = phase(); if (ph === 'open' || ph === 'none' || opening) return;
+  if (!fbOK('boardMsg')) return;
+  if (!mySession()) { setMsg('boardMsg', 'This laptop does not have the questions for this round. Start a fresh round from Setup.', false); return; }
+  opening = true; $('openBtn').disabled = true;
+  try {
+    const first = !cur.openedAt;
+    if (first) { setMsg('boardMsg', 'Opening: sending the questions and pictures to phones…', true); await pushImgs(cur.sid); }
+    const extra = ph === 'closed' ? 60000 : (cur.mins || S.mins) * 60000;
+    const patch = { open: true, closesAt: now() + extra };            // countdown starts once everything is sent
+    if (first) Object.assign(patch, { openedAt: serverTimestamp(), qs: publicOpts(), qt: publicQs(), staff: staffList() });
+    await update(ref(db, 'pc/current'), patch); setMsg('boardMsg', '', true);
+  } catch (err) { setMsg('boardMsg', 'Could not open: ' + err.message, false); }
+  opening = false; tick();
 }
 $('openBtn').onclick = openRound;
 $('closeBtn').onclick = () => closeRound(false);

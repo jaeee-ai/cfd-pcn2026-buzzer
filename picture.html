@@ -49,6 +49,8 @@
   .summary div{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);line-height:1.35}
   .summary div:last-child{border-bottom:none}
   .summary span{font-family:var(--mono);color:var(--gold);flex:none}
+  .pulse{width:12px;height:12px;border-radius:50%;background:var(--gold);flex:none;animation:pulse 1.2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}
   .big{font-family:var(--mono);font-size:56px;color:var(--gold);line-height:1;margin:6px 0 10px}
   .tick{font-size:48px;color:var(--green);line-height:1;margin-top:10px}
   #err{color:var(--red);font-size:15px;line-height:1.4;margin-top:12px;min-height:1.4em}
@@ -86,6 +88,16 @@
   <div id="pinErr" role="alert" style="color:var(--red);font-size:15px;line-height:1.4;margin-top:12px"></div>
   <button class="btn primary" id="pinGo" type="button" disabled>Continue</button>
   <button class="link" type="button" data-back="table">Wrong table? Go back</button>
+</section>
+
+<!-- holding room: checked in, waiting for the host to open the round -->
+<section id="sHold" class="hidden">
+  <div class="label" id="holdLabel"></div>
+  <div class="tick" style="color:var(--gold)">✓</div>
+  <h1>You're checked in!</h1>
+  <p>This phone is your table's answering phone. The questions and pictures will appear here the moment the host starts the round, and the countdown starts then.</p>
+  <div class="summary" style="padding:14px;display:flex;align-items:center;gap:12px"><span class="pulse"></span><span>Waiting for the host to start…</span></div>
+  <p style="margin-top:16px">Keep this page open, and keep your screen on.</p>
 </section>
 
 <!-- answers -->
@@ -179,7 +191,7 @@ const cfg = window.FIREBASE_CONFIG || {};
 let db = null;
 
 let cur = null, subs = {}, rel = {}, offset = 0, unsubSubs = null, unsubRel = null, sid = null;
-let imgs = [], unsubImgs = null, quizSig = '';
+let imgs = [], unsubImgs = null, quizSig = '', held = false;
 let step = 'table', table = null, pin = '', answers = {}, mine = null, busy = false, pinErr = '', tok = '', claim = null, owner = {}, unsubOwner = null, claiming = false;
 const newTok = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
 
@@ -244,7 +256,7 @@ const ownerActive = t => !!(owner[t] && owner[t].gen === ver(t));
 const takenByOther = t => ownerActive(t) && !holds(t);
 let shown = '';
 function show(id){
-  for (const s of ['sWait','sTable','sPin','sQuiz','sConfirm','sDone','sLocked','sAmend','sBusy','sReclaim']) $(s).classList.toggle('hidden', s !== id);
+  for (const s of ['sWait','sTable','sPin','sQuiz','sConfirm','sDone','sLocked','sAmend','sBusy','sReclaim','sHold']) $(s).classList.toggle('hidden', s !== id);
   if (id !== shown) { shown = id; window.scrollTo(0, 0); }      // only jump to the top when a different screen opens
 }
 function qList(){ return (cur && cur.qs) ? cur.qs : []; }
@@ -296,6 +308,12 @@ function render(){
     $('pinGo').disabled = claiming || !/^\d{4}$/.test(pin); $('pinGo').textContent = claiming ? 'Checking…' : 'Continue';
     show('sPin'); setTimeout(() => $('pin').focus(), 50); return;
   }
+  // holding room: the questions are only sent to phones once the host opens the round
+  if ((step === 'quiz' || step === 'confirm') && !qList().length) {
+    $('holdLabel').textContent = isStaffT(table) ? `Table ${table} · Staff, playing for fun` : `Table ${table}`;
+    held = true; show('sHold'); return;
+  }
+  if (held && step === 'quiz') { held = false; try { navigator.vibrate && navigator.vibrate([120, 60, 120]); } catch (_) {} }
   if (step === 'quiz') {
     $('quizLabel').textContent = isStaffT(table) ? `Table ${table} · Staff, playing for fun` : `Table ${table}`;
     const sig = JSON.stringify([qList(), cur.qt || [], imgs.map(x => (x || '').length)]);
