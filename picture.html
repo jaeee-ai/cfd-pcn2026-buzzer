@@ -64,8 +64,9 @@
 <!-- waiting for host -->
 <section id="sWait">
   <div class="label">Game 01 · Picture This</div>
-  <h1>Hang tight</h1>
-  <p>The round will start soon. Keep this page open.</p>
+  <h1 id="waitTitle">Hang tight</h1>
+  <p id="waitText">The round will start soon. Keep this page open.</p>
+  <button class="btn primary hidden" id="reloadBtn" type="button" onclick="location.reload()">Try again</button>
 </section>
 
 <!-- choose table -->
@@ -160,14 +161,22 @@
 
 <script src="config.js"></script>
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getDatabase, ref, onValue, update, get, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+let initializeApp, getDatabase, ref, set, update, get, onValue, serverTimestamp;
+// Firebase is loaded on the fly, so the page still works (and explains itself) if a network blocks it.
+const FB_URL = 'https://www.gstatic.com/firebasejs/10.12.2/';
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timed out')), ms))]);
+async function loadFirebase(){
+  const app = await withTimeout(import(FB_URL + 'firebase-app.js'), 12000);
+  const dbm = await withTimeout(import(FB_URL + 'firebase-database.js'), 12000);
+  initializeApp = app.initializeApp;
+  ({ getDatabase, ref, set, update, get, onValue, serverTimestamp } = dbm);
+}
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const LETTERS = 'ABCD';
 const cfg = window.FIREBASE_CONFIG || {};
-const db = getDatabase(initializeApp(cfg));
+let db = null;
 
 let cur = null, subs = {}, rel = {}, offset = 0, unsubSubs = null, unsubRel = null, sid = null;
 let imgs = [], unsubImgs = null, quizSig = '';
@@ -179,32 +188,35 @@ const key = () => `picture-${sid}`;
 const load = () => { try { return JSON.parse(localStorage.getItem(key()) || 'null'); } catch (e) { return null; } };
 const save = () => { try { localStorage.setItem(key(), JSON.stringify({ table, pin, answers, mine, tok, claim })); } catch (e) {} };
 
-onValue(ref(db, '.info/serverTimeOffset'), s => { offset = s.val() || 0; });
-onValue(ref(db, '.info/connected'), s => { const on = !!s.val(); $('foot').classList.toggle('on', on); $('netTxt').textContent = on ? 'Connected' : 'Reconnecting…'; });
+function attachFirebase(){
+  db = getDatabase(initializeApp(cfg));
+  onValue(ref(db, '.info/serverTimeOffset'), s => { offset = s.val() || 0; });
+  onValue(ref(db, '.info/connected'), s => { const on = !!s.val(); $('foot').classList.toggle('on', on); $('netTxt').textContent = on ? 'Connected' : 'Reconnecting…'; });
 
-onValue(ref(db, 'pc/current'), s => {
-  cur = s.val();
-  const newSid = cur && cur.sid ? String(cur.sid) : null;
-  if (newSid !== sid) {                                   // new session (e.g. after a rehearsal): start fresh
-    sid = newSid; subs = {}; rel = {};
-    if (unsubSubs) { unsubSubs(); unsubSubs = null; }
-    if (unsubRel) { unsubRel(); unsubRel = null; }
-    if (unsubOwner) { unsubOwner(); unsubOwner = null; }
-    if (unsubImgs) { unsubImgs(); unsubImgs = null; }
-    owner = {}; imgs = []; quizSig = '';
-    const st = sid ? load() : null;
-    table = st?.table ?? null; pin = st?.pin || ''; answers = st?.answers || {}; mine = st?.mine || null;
-    tok = st?.tok || newTok(); claim = st?.claim || null;
-    step = mine ? 'done' : table ? (claim && claim.t === table ? 'quiz' : 'pin') : 'table';
-    if (sid) {
-      unsubSubs = onValue(ref(db, `pc/sessions/${sid}/subs`), s2 => { subs = s2.val() || {}; render(); });
-      unsubRel = onValue(ref(db, `pc/sessions/${sid}/rel`), s2 => { rel = s2.val() || {}; render(); });
-      unsubOwner = onValue(ref(db, `pc/sessions/${sid}/owner`), s2 => { owner = s2.val() || {}; render(); });
-      unsubImgs = onValue(ref(db, `pc/imgs/${sid}`), s2 => { const v = s2.val() || []; imgs = Array.isArray(v) ? v : Object.keys(v).sort((a, b) => a - b).map(k => v[k]); render(); });
+  onValue(ref(db, 'pc/current'), s => {
+    cur = s.val();
+    const newSid = cur && cur.sid ? String(cur.sid) : null;
+    if (newSid !== sid) {                                   // new session (e.g. after a rehearsal): start fresh
+      sid = newSid; subs = {}; rel = {};
+      if (unsubSubs) { unsubSubs(); unsubSubs = null; }
+      if (unsubRel) { unsubRel(); unsubRel = null; }
+      if (unsubOwner) { unsubOwner(); unsubOwner = null; }
+      if (unsubImgs) { unsubImgs(); unsubImgs = null; }
+      owner = {}; imgs = []; quizSig = '';
+      const st = sid ? load() : null;
+      table = st?.table ?? null; pin = st?.pin || ''; answers = st?.answers || {}; mine = st?.mine || null;
+      tok = st?.tok || newTok(); claim = st?.claim || null;
+      step = mine ? 'done' : table ? (claim && claim.t === table ? 'quiz' : 'pin') : 'table';
+      if (sid) {
+        unsubSubs = onValue(ref(db, `pc/sessions/${sid}/subs`), s2 => { subs = s2.val() || {}; render(); });
+        unsubRel = onValue(ref(db, `pc/sessions/${sid}/rel`), s2 => { rel = s2.val() || {}; render(); });
+        unsubOwner = onValue(ref(db, `pc/sessions/${sid}/owner`), s2 => { owner = s2.val() || {}; render(); });
+        unsubImgs = onValue(ref(db, `pc/imgs/${sid}`), s2 => { const v = s2.val() || []; imgs = Array.isArray(v) ? v : Object.keys(v).sort((a, b) => a - b).map(k => v[k]); render(); });
+      }
     }
-  }
-  render();
-});
+    render();
+  });
+}
 
 function phase(){
   if (!cur || !cur.sid) return 'none';
@@ -365,6 +377,13 @@ $('submit').onclick = async () => {
 };
 
 render();
+loadFirebase()
+  .then(() => attachFirebase())
+  .catch(() => {
+    $('waitTitle').textContent = "Can't connect";
+    $('waitText').textContent = "This network seems to be blocking the game. Turn off Wi-Fi to use your mobile data, then tap Try again.";
+    $('reloadBtn').classList.remove('hidden'); $('netTxt').textContent = 'Not connected'; show('sWait');
+  });
 </script>
 </body>
 </html>

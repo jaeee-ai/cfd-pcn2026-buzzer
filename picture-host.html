@@ -174,6 +174,8 @@
   #qrOverlay h1{font-size:clamp(32px,4vw,64px);margin:0;font-weight:800}
   #qrOverlay .qrbox{background:#fff;padding:20px;border-radius:20px}
   #qrOverlay .url{font-family:var(--mono);color:var(--muted);font-size:16px}
+  #fbBanner{position:fixed;left:0;right:0;top:0;z-index:20;background:#4A1F1A;border-bottom:2px solid var(--red);color:var(--cream);padding:12px 4vw;font-size:15px;line-height:1.5}
+  #fbBanner b{color:#FFB4A8}
   #net{position:fixed;right:14px;bottom:8px;font-family:var(--mono);font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
   #net .dot{width:9px;height:9px;border-radius:5px;background:var(--red)}
   #net.on .dot{background:var(--green)}
@@ -301,13 +303,22 @@
 </div>
 
 <div id="print"></div>
+<div id="fbBanner" class="hidden" role="alert"></div>
 <div id="net"><span class="dot"></span><span id="netTxt">Connecting…</span></div>
 
 <script src="config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getDatabase, ref, set, update, get, onValue, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+let initializeApp, getDatabase, ref, set, update, get, onValue, serverTimestamp, db = null, fbState = 'loading';
+// Firebase is loaded on the fly, so the page still works (and explains itself) if a network blocks it.
+const FB_URL = 'https://www.gstatic.com/firebasejs/10.12.2/';
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timed out')), ms))]);
+async function loadFirebase(){
+  const app = await withTimeout(import(FB_URL + 'firebase-app.js'), 12000);
+  const dbm = await withTimeout(import(FB_URL + 'firebase-database.js'), 12000);
+  initializeApp = app.initializeApp;
+  ({ getDatabase, ref, set, update, get, onValue, serverTimestamp } = dbm);
+}
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -355,24 +366,40 @@ function randPin(){
 
 // ---------- Firebase ----------
 const cfg = window.FIREBASE_CONFIG || {};
-const db = getDatabase(initializeApp(cfg));
 let offset = 0, cur = null, subs = {}, rel = {}, owner = {}, unsubSubs = null, unsubRel = null, unsubOwner = null, subsSid = null;
 const now = () => Date.now() + offset;
-onValue(ref(db, '.info/serverTimeOffset'), s => { offset = s.val() || 0; });
-onValue(ref(db, '.info/connected'), s => { const on = !!s.val(); $('net').classList.toggle('on', on); $('netTxt').textContent = on ? 'Online' : 'Offline: reconnecting…'; });
-onValue(ref(db, 'pc/current'), s => {
-  cur = s.val();
-  const sid = cur && cur.sid ? String(cur.sid) : null;
-  if (sid !== subsSid) {
-    if (unsubSubs) unsubSubs(); if (unsubRel) unsubRel(); if (unsubOwner) unsubOwner(); subs = {}; rel = {}; owner = {}; subsSid = sid; unsubSubs = null; unsubRel = null; unsubOwner = null;
-    if (sid) {
-      unsubSubs = onValue(ref(db, `pc/sessions/${sid}/subs`), x => { subs = x.val() || {}; renderBoard(); });
-      unsubRel = onValue(ref(db, `pc/sessions/${sid}/rel`), x => { rel = x.val() || {}; renderBoard(); });
-      unsubOwner = onValue(ref(db, `pc/sessions/${sid}/owner`), x => { owner = x.val() || {}; renderBoard(); });
+function attachFirebase(){
+  db = getDatabase(initializeApp(cfg));
+  onValue(ref(db, '.info/serverTimeOffset'), s => { offset = s.val() || 0; });
+  onValue(ref(db, '.info/connected'), s => { const on = !!s.val(); $('net').classList.toggle('on', on); $('netTxt').textContent = on ? 'Online' : 'Offline: reconnecting…'; });
+  onValue(ref(db, 'pc/current'), s => {
+    cur = s.val();
+    const sid = cur && cur.sid ? String(cur.sid) : null;
+    if (sid !== subsSid) {
+      if (unsubSubs) unsubSubs(); if (unsubRel) unsubRel(); if (unsubOwner) unsubOwner(); subs = {}; rel = {}; owner = {}; subsSid = sid; unsubSubs = null; unsubRel = null; unsubOwner = null;
+      if (sid) {
+        unsubSubs = onValue(ref(db, `pc/sessions/${sid}/subs`), x => { subs = x.val() || {}; renderBoard(); });
+        unsubRel = onValue(ref(db, `pc/sessions/${sid}/rel`), x => { rel = x.val() || {}; renderBoard(); });
+        unsubOwner = onValue(ref(db, `pc/sessions/${sid}/owner`), x => { owner = x.val() || {}; renderBoard(); });
+      }
     }
-  }
-  renderStatus(); renderBoard();
-});
+    renderStatus(); renderBoard();
+  });
+}
+function fbFail(kind, detail){
+  fbState = 'failed';
+  const msg = kind === 'config'
+    ? `Firebase isn't set up correctly (${detail}). Check config.js is next to this page and has your databaseURL.`
+    : "Can't reach Firebase from this network: it may be blocking it (common on office or venue Wi-Fi). Setup still works and is saved on this laptop, but rounds can't start. Try another network, such as your phone's hotspot, then reload this page.";
+  $('fbBanner').innerHTML = `<b>Not connected.</b> ${esc(msg)} <button type="button" class="btn ghost" onclick="location.reload()" style="padding:6px 14px;margin-left:8px">Reload</button>`;
+  $('fbBanner').classList.remove('hidden');
+  $('netTxt').textContent = 'Not connected';
+}
+function fbOK(msgId){
+  if (db) return true;
+  setMsg(msgId, fbState === 'loading' ? 'Still connecting to Firebase. Give it a few seconds and try again.' : "Not connected to Firebase, so this can't be done yet. See the message at the top of the page.", false);
+  return false;
+}
 const mySession = () => cur && cur.sid && String(cur.sid) === String(S.sid);
 
 // ---------- setup UI ----------
@@ -465,6 +492,7 @@ const publicQs = () => S.pics.map((p, i) => (p.q || '').trim() || `Picture ${i +
 let armed = 0;
 $('newSession').onclick = async () => {
   if (!validOpts() || !validPins()) return;
+  if (!fbOK('setupMsg')) return;
   if (cur && cur.sid && Date.now() - armed > 4000) { armed = Date.now(); $('newSession').textContent = 'Click again to clear and restart'; setTimeout(() => { $('newSession').textContent = 'Start a fresh round'; }, 4000); return; }
   armed = 0; $('newSession').textContent = 'Start a fresh round';
   const sid = String(Date.now());
@@ -489,12 +517,13 @@ $('newSession').onclick = async () => {
   }
 };
 $('pushOpts').onclick = async () => {
+  if (!fbOK('setupMsg')) return;
   if (!mySession()) { setMsg('setupMsg', 'Start a fresh round first.', false); return; }
   if (!validOpts()) return;
   try { await pushImgs(cur.sid); await update(ref(db, 'pc/current'), { qs: publicOpts(), qt: publicQs(), mins: S.mins, staff: staffList() }); setMsg('setupMsg', 'Pictures, questions and options updated on everyone\'s phones.', true); }
   catch (err) { setMsg('setupMsg', /permission/i.test(err.message || '') ? "Firebase refused the update. The published database rules are probably out of date: paste the latest database.rules.json into Realtime Database → Rules and click Publish." : 'Could not update: ' + err.message, false); }
 };
-$('toBoard').onclick = () => { if (!mySession()) { setMsg('setupMsg', 'Start a fresh round first.', false); return; } show('board'); renderBoard(); };
+$('toBoard').onclick = () => { if (!fbOK('setupMsg')) return; if (!mySession()) { setMsg('setupMsg', 'Start a fresh round first.', false); return; } show('board'); renderBoard(); };
 
 // ---------- board ----------
 const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -629,6 +658,7 @@ const mmssT = ms => { const t = Math.max(0, Math.round(ms / 100)); return `${Mat
 function overrides(){ S.overrides = S.overrides || {}; return (S.overrides[cur.sid] = S.overrides[cur.sid] || {}); }
 const isAcc = (t, i) => !!(overrides()[t] && overrides()[t][i]);
 async function showResults(){
+  if (!fbOK('boardMsg')) return;
   if (phase() === 'open') { setMsg('boardMsg', 'Close submissions first. Answers stay locked while the round is open.', false); return; }
   if (!mySession()) { setMsg('boardMsg', 'This laptop does not have the answer key for this round.', false); return; }
   try {
@@ -778,6 +808,9 @@ document.addEventListener('keydown', e => {
 });
 
 renderSetup();
+loadFirebase()
+  .then(() => { try { attachFirebase(); fbState = 'ok'; } catch (e) { fbFail('config', e.message); } })
+  .catch(() => fbFail('network'));
 </script>
 </body>
 </html>
