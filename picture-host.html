@@ -102,6 +102,14 @@
   #qrMini .cap{font-family:var(--mono);font-size:12px;letter-spacing:.12em;color:var(--navy);font-weight:700}
   #count{font-family:var(--mono);font-size:clamp(16px,1.5vw,24px);color:var(--muted);text-align:center}
   #count b{color:var(--gold)}
+  #count.ready{color:var(--navy);background:var(--gold);border-radius:999px;padding:10px 28px;width:fit-content;margin:0 auto;font-weight:700;animation:readyglow 1.6s ease-in-out infinite}
+  #count.ready b{color:var(--navy)}
+  @keyframes readyglow{0%,100%{box-shadow:0 0 0 0 rgba(232,184,74,.0)}50%{box-shadow:0 0 0 10px rgba(232,184,74,.25)}}
+  .chip.checked{background:#123A63;border-color:#5DA9FF;border-style:solid;box-shadow:0 0 22px rgba(93,169,255,.3);opacity:1}
+  .chip.checked .n,.chip.checked .st{color:#A9D1FF}
+  .chip.checked .big{color:#fff}
+  .chip.checked.staff{border-style:dashed}
+  #clock.allin .s{color:var(--gold);font-weight:700}
   #toast{position:fixed;left:50%;top:16vh;transform:translate(-50%,-20px);opacity:0;background:var(--green);color:#0B2615;border-radius:999px;padding:14px 34px;
     font-weight:800;font-size:clamp(22px,2.4vw,40px);transition:opacity .3s,transform .3s;pointer-events:none;z-index:4;box-shadow:0 10px 40px rgba(0,0,0,.4)}
   #toast.show{opacity:1;transform:translate(-50%,0)}
@@ -539,7 +547,7 @@ function phase(){
   if (cur.open) return now() >= cur.closesAt ? 'expired' : 'open';
   return cur.openedAt ? 'closed' : 'ready';
 }
-let seen = null, qrDrawn = '';
+let seen = null, seenIn = null, allIn = false, qrDrawn = '';
 function renderBoard(){
   renderStatus();
   if (view !== 'board' || !cur) return;
@@ -564,19 +572,32 @@ function renderBoard(){
   const fresh = seen ? arrived.filter(t => !seen.has(tag(t))) : [];
   seen = new Set(arrived.map(tag));
   const ord = k => k === 1 ? '1st' : k === 2 ? '2nd' : k === 3 ? '3rd' : k + 'th';
+  // check-ins (a phone has entered the table's PIN)
+  const checkedIn = Array.from({ length: n }, (_, k) => String(k + 1)).filter(t => subs[t] || (owner[t] && owner[t].gen === ver(t)));
+  const ckTag = t => t + ':' + ((owner[t] && owner[t].gen) || 0);
+  const freshIn = seenIn ? checkedIn.filter(t => !subs[t] && !seenIn.has(ckTag(t))) : [];
+  seenIn = new Set(checkedIn.map(ckTag));
+  allIn = checkedIn.length === n;
   $('chips').style.setProperty('--nt', n);
   $('chips').innerHTML = Array.from({ length: n }, (_, k) => String(k + 1)).map(t => {
     const sb = subs[t], pos = order.indexOf(t), am = amending(t);
     const st = sb ? (cur.openedAt ? mmss(sb.at - cur.openedAt) : '✓') : 'Waiting…';
     const answering = !sb && owner[t] && owner[t].gen === ver(t), stf = isStaff(t), lbl = stf ? 'STAFF' : 'TABLE';
-    if (answering) return `<div class="chip claimed${stf ? ' staff' : ''}" data-reset="${t}" title="Click to reset Table ${t}'s answering phone"><div class="n">${lbl}</div><div class="big">${t}</div><div class="st">${cur.openedAt ? 'Answering<span class="dots"></span>' : '✓ Checked in'}</div></div>`;
+    if (answering) return `<div class="chip ${cur.openedAt ? 'claimed' : 'checked'}${stf ? ' staff' : ''}${freshIn.includes(t) ? ' pop' : ''}" data-reset="${t}" title="Click to reset Table ${t}'s answering phone"><div class="n">${lbl}</div><div class="big">${t}</div><div class="st">${cur.openedAt ? 'Answering<span class="dots"></span>' : '✓ Checked in'}</div></div>`;
     if (am) return `<div class="chip amend${stf ? ' staff' : ''}"><span class="pos">Amending</span><div class="n">${lbl}</div><div class="big">${t}</div><div class="st">Changing answers…</div></div>`;
     const badge = sb ? (stf ? `<span class="pos stafftag">Staff · for fun</span>` : `<span class="pos">${ord(pos + 1)} in${sb.v ? ' · amended' : ''}</span>`) : '';
     return `<div class="chip ${sb ? 'in' : 'wait'}${stf ? ' staff' : ''}${fresh.includes(t) ? ' pop' : ''}"${sb ? ` data-amend="${t}" title="Click to let Table ${t} change their answers"` : ''}>${badge}
       <div class="n">${lbl}</div><div class="big">${t}</div><div class="st">${sb ? '✓ ' + st : st}</div></div>`;
   }).join('');
   const nComp = n - staffList().length, gotComp = order.length;
-  $('count').innerHTML = gotComp >= nComp && nComp > 0 ? `<b>All ${nComp} competing tables</b> are in!` : `<b>${gotComp}</b> of ${nComp} competing tables have submitted`;
+  if (!cur.openedAt) {                       // before the round: show check-ins so the emcee knows when to start
+    $('count').classList.toggle('ready', allIn);
+    $('count').innerHTML = allIn ? `✓ All ${n} tables are checked in. Ready to start!` : `<b>${checkedIn.length}</b> of ${n} tables checked in`;
+    if (freshIn.length) { const t = freshIn[freshIn.length - 1]; toast(allIn ? `Table ${t} checked in. Everyone's ready!` : `Table ${t} checked in`); chime(allIn ? 7 : 2); }
+  } else {
+    $('count').classList.remove('ready');
+    $('count').innerHTML = gotComp >= nComp && nComp > 0 ? `<b>All ${nComp} competing tables</b> are in!` : `<b>${gotComp}</b> of ${nComp} competing tables have submitted`;
+  }
   if (fresh.length) { const t = fresh[fresh.length - 1]; const who = isStaff(t) ? `Staff table ${t}` : `Table ${t}`; toast(subs[t].v ? `${who} has resubmitted!` : `${who} is in!`); chime(isStaff(t) ? 0 : order.indexOf(t)); }
   if (qrDrawn !== joinURL()) {
     qrDrawn = joinURL(); $('qrM').innerHTML = '';
@@ -603,7 +624,8 @@ function tick(){
   if (ph === 'expired') { closeRound(true); }
   c.className = ph === 'open' ? ('open' + (cur.closesAt - now() <= 60000 ? ' hurry' : '')) : (ph === 'closed' || ph === 'expired') ? 'closed' : '';
   $('clockT').textContent = ph === 'open' ? mmss(cur.closesAt - now()) : ph === 'ready' ? mmss((cur.mins || S.mins) * 60000) : (ph === 'closed' || ph === 'expired') ? "Time's up" : '--:--';
-  $('clockS').textContent = ph === 'open' ? 'Submissions open' : ph === 'ready' ? 'Not started' : (ph === 'closed' || ph === 'expired') ? 'Submissions closed' : '';
+  c.classList.toggle('allin', ph === 'ready' && allIn);
+  $('clockS').textContent = ph === 'open' ? 'Submissions open' : ph === 'ready' ? (allIn ? 'Everyone is ready' : 'Not started') : (ph === 'closed' || ph === 'expired') ? 'Submissions closed' : '';
   $('openBtn').textContent = ph === 'closed' ? 'Reopen (1 min)' : 'Open submissions';
   $('openBtn').disabled = ph === 'open' || ph === 'expired' || opening;
   $('closeBtn').disabled = ph !== 'open';
