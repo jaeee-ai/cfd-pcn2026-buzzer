@@ -116,7 +116,7 @@
   .ctl{transition:opacity .5s}
   #controls{position:fixed;left:0;right:0;bottom:0;padding:18px 4vw 14px;display:flex;flex-direction:column;gap:8px;background:var(--panel);border-top:1px solid var(--line);z-index:3}
   body.idle .ctl{opacity:0;pointer-events:none}
-  body.forcehide .ctl,body.forcehide #results .help,body.forcehide #entries .help{opacity:0;pointer-events:none}
+  body.forcehide .ctl,body.forcehide #results .help,body.forcehide #entries .help,body.forcehide #answers .help{opacity:0;pointer-events:none}
   body.idle{cursor:none}
   .imgrow{display:flex;align-items:center;gap:12px;margin-top:12px;color:var(--muted);font-size:14px}
   .imgrow img{height:64px;border-radius:8px;border:1px solid var(--line)}
@@ -193,6 +193,39 @@
   #key{width:min(1200px,92vw);display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
   #key div{background:var(--panel);border:1.5px solid var(--gold);border-radius:14px;padding:12px 18px;font-size:clamp(16px,1.5vw,24px)}
   #key b{font-family:var(--mono);color:var(--gold);margin-right:10px}
+
+  @keyframes breath{0%,100%{opacity:1}50%{opacity:.55}}
+  /* answers walkthrough */
+  #answers{display:flex;flex-direction:column;padding:4vh 4vw 3vh;gap:2.6vh}
+  #answers .ahead{display:flex;justify-content:space-between;align-items:flex-end;gap:24px}
+  #answers h1{margin:6px 0 0;font-size:clamp(32px,3.8vw,64px);line-height:1;font-weight:800}
+  #adots{display:flex;gap:10px;align-items:center}
+  #adots span{width:clamp(30px,2.6vw,44px);height:clamp(30px,2.6vw,44px);border-radius:50%;border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-weight:700;font-size:clamp(13px,1.1vw,18px);color:var(--muted)}
+  #adots span.done{background:var(--panel);color:var(--gold);border-color:var(--gold)}
+  #adots span.now{background:var(--gold);color:var(--navy);border-color:var(--gold)}
+  .abody{flex:1;display:grid;grid-template-columns:1.1fr 1fr;gap:3.2vw;align-items:center;min-height:0}
+  .aframe{position:relative;aspect-ratio:3/2;border-radius:24px;overflow:hidden;background:#0A1422;border:1.5px solid var(--line);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+  .aframe img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .aframe .pb{position:absolute;top:14px;left:14px;width:clamp(44px,3.6vw,64px);height:clamp(44px,3.6vw,64px);border-radius:50%;background:var(--gold);color:var(--navy);
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:clamp(22px,1.9vw,32px)}
+  .aq{font-size:clamp(22px,2.1vw,38px);font-weight:800;line-height:1.25;margin-bottom:2.4vh}
+  .aopts{display:flex;flex-direction:column;gap:1.4vh}
+  .aopt{position:relative;display:flex;align-items:center;gap:16px;border:1.5px solid var(--line);border-radius:16px;padding:1.5vh 18px;overflow:hidden;background:var(--panel);
+    transition:opacity .5s,border-color .5s,transform .5s}
+  .aopt .fill{position:absolute;left:0;top:0;bottom:0;background:rgba(93,169,255,.18);transition:width .9s cubic-bezier(.2,.8,.2,1),background .5s}
+  .aopt .lt{position:relative;flex:none;width:clamp(34px,2.6vw,46px);height:clamp(34px,2.6vw,46px);border-radius:50%;border:1.5px solid var(--gold);color:var(--gold);
+    display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;font-size:clamp(15px,1.3vw,22px)}
+  .aopt .tx{position:relative;flex:1;font-size:clamp(16px,1.45vw,26px);font-weight:600;line-height:1.25}
+  .aopt .ct{position:relative;flex:none;font-family:var(--mono);font-size:clamp(13px,1.1vw,18px);color:var(--muted);white-space:nowrap}
+  .aopt.correct{border-color:var(--gold);transform:scale(1.02);box-shadow:0 0 34px rgba(232,184,74,.3)}
+  .aopt.correct .fill{background:rgba(232,184,74,.32)}
+  .aopt.correct .lt{background:var(--gold);color:var(--navy)}
+  .aopt.correct .ct{color:var(--gold);font-weight:700}
+  .aopt.dim{opacity:.38}
+  #asum{font-family:var(--mono);font-size:clamp(16px,1.5vw,26px);color:var(--muted);text-align:center;min-height:1.5em}
+  #asum b{color:var(--gold)}
+  #asum.ask{color:var(--gold);animation:breath 2.4s ease-in-out infinite}
 
   /* QR overlay */
   #qrOverlay{position:fixed;inset:0;background:rgba(15,27,45,.96);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3vh;z-index:5}
@@ -274,15 +307,29 @@
   <div class="bar">
     <button class="btn primary" id="openBtn" type="button">Open submissions</button>
     <button class="btn danger" id="closeBtn" type="button">Close now</button>
-    <button class="btn ghost" id="resultsBtn" type="button">Show results</button>
+    <button class="btn ghost" id="resultsBtn" type="button">Answers &amp; results</button>
     <button class="btn ghost" id="qrBtn" type="button">Big QR</button>
     <button class="btn ghost" id="setupBtn" type="button">Setup</button>
   </div>
   <div class="msg" id="boardMsg" role="status" style="text-align:center"></div>
-  <div class="help"><kbd>O</kbd> open · <kbd>C</kbd> close · <kbd>R</kbd> results · <kbd>Q</kbd> big QR · <kbd>F</kbd> fullscreen · <kbd>H</kbd> hide/show controls · <kbd>Esc</kbd> setup · click a table to reset its phone or let it amend · controls hide when the mouse is still</div>
+  <div class="help"><kbd>O</kbd> open · <kbd>C</kbd> close · <kbd>R</kbd> answers &amp; results · <kbd>Q</kbd> big QR · <kbd>F</kbd> fullscreen · <kbd>H</kbd> hide/show controls · <kbd>Esc</kbd> setup · click a table to reset its phone or let it amend · controls hide when the mouse is still</div>
   </div>
   <div id="toast"></div>
 </main>
+
+<!-- ANSWERS WALKTHROUGH -->
+<section id="answers" class="screen hidden">
+  <div class="ahead">
+    <div><div class="label">Game 01 · Picture This</div><h1>The answers</h1></div>
+    <div id="adots"></div>
+  </div>
+  <div class="abody">
+    <div class="aframe" id="aframe"></div>
+    <div><div class="aq" id="aq"></div><div class="aopts" id="aopts"></div></div>
+  </div>
+  <div id="asum"></div>
+  <div class="help"><kbd>Space</kbd> next · <kbd>←</kbd> back · <kbd>N</kbd> skip to next picture · <kbd>L</kbd> straight to the leaderboard · <kbd>B</kbd> back to board · <kbd>H</kbd> hide help · <kbd>F</kbd> fullscreen</div>
+</section>
 
 <!-- RESULTS -->
 <section id="results" class="screen hidden">
@@ -295,7 +342,7 @@
   <div id="revealHint"></div>
   <div id="key" class="hidden"></div>
   <div class="msg" id="resMsg" role="status"></div>
-  <div class="help"><kbd>Space</kbd> reveal next place · <kbd>V</kbd> reveal all · <kbd>A</kbd> show answers · <kbd>E</kbd> entries &amp; disputes · <kbd>B</kbd> back to board · <kbd>H</kbd> hide help · <kbd>F</kbd> fullscreen</div>
+  <div class="help"><kbd>Space</kbd> reveal next place · <kbd>V</kbd> reveal all · <kbd>A</kbd> show answer list · <kbd>W</kbd> back to the answers walkthrough · <kbd>E</kbd> entries &amp; disputes · <kbd>B</kbd> back to board · <kbd>H</kbd> hide help · <kbd>F</kbd> fullscreen</div>
 </section>
 
 <!-- ENTRIES (for checking answers and resolving disputes) -->
@@ -351,7 +398,7 @@ async function loadFirebase(){
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const LETTERS = 'ABCD';
-const show = id => { for (const s of ['setup','board','results','entries']) $(s).classList.toggle('hidden', s !== id); view = id; document.body.classList.remove('idle'); };
+const show = id => { for (const s of ['setup','board','answers','results','entries']) $(s).classList.toggle('hidden', s !== id); view = id; document.body.classList.remove('idle'); };
 let view = 'setup';
 
 // ---------- local setup (answer key stays on this laptop) ----------
@@ -726,8 +773,46 @@ async function showResults(){
   catch (err) { setMsg('boardMsg', 'Could not load answers: ' + err.message, false); return; }
   buildResults(); revealed = 0; applyVeil(); setMsg('resMsg', '', true);
   $('key').classList.add('hidden');
-  show('results');
+  aStep = 0; show('answers'); renderAnswers();
 }
+function showLeaderboard(){ buildResults(); revealed = 0; applyVeil(); $('key').classList.add('hidden'); show('results'); }
+// ---------- answers walkthrough: two steps per picture (what the tables picked, then the answer) ----------
+let aStep = 0;
+function tallies(i){
+  const n = cur.tables || S.nTables, c = { A: 0, B: 0, C: 0, D: 0 }; let answered = 0;
+  for (let t = 1; t <= n; t++) { const a = subs[t] && lastAns[t] && lastAns[t].a; if (a && a[i]) { c[a[i]] = (c[a[i]] || 0) + 1; answered++; } }
+  return { c, answered };
+}
+function renderAnswers(){
+  const np = S.pics.length, i = Math.floor(aStep / 2), shown = aStep % 2 === 1, p = S.pics[i];
+  if (!p) return;
+  const { c, answered } = tallies(i), max = Math.max(1, ...Object.values(c));
+  $('adots').innerHTML = S.pics.map((_, k) => `<span class="${k < i || (k === i && shown) ? 'done' : ''}${k === i ? ' now' : ''}">${k + 1}</span>`).join('');
+  $('aframe').innerHTML = (IMG[i] ? `<img src="${IMG[i]}" alt="Picture ${i + 1}">` : '') + `<div class="pb">${i + 1}</div>`;
+  $('aq').textContent = (p.q || '').trim() || `Picture ${i + 1}`;
+  const opts = p.opts.map((o, k) => ({ l: LETTERS[k], o })).filter(x => (x.o || '').trim());
+  const sig = 'p' + i;
+  const fresh = $('aopts').dataset.sig !== sig; $('aopts').dataset.sig = sig;
+  $('aopts').innerHTML = opts.map(x => {
+    const n2 = c[x.l] || 0, ok = x.l === p.ans;
+    return `<div class="aopt${shown ? (ok ? ' correct' : ' dim') : ''}"><div class="fill" style="width:${fresh ? 0 : (n2 / max) * 100}%" data-w="${(n2 / max) * 100}"></div>
+      <div class="lt">${shown && ok ? '✓' : x.l}</div><div class="tx">${esc(x.o)}</div><div class="ct">${n2} ${n2 === 1 ? 'table' : 'tables'}</div></div>`;
+  }).join('');
+  if (fresh) requestAnimationFrame(() => requestAnimationFrame(() => document.querySelectorAll('#aopts .fill').forEach(f => { f.style.width = f.dataset.w + '%'; })));
+  const right = c[p.ans] || 0;
+  $('asum').className = shown ? '' : 'ask';
+  $('asum').innerHTML = !answered ? (shown ? 'No table answered this one.' : 'And the answer is…')
+    : shown ? (right === answered ? `<b>Every table</b> got it right!` : right ? `<b>${right} of ${answered}</b> tables got it right` : `Nobody got this one!`)
+    : 'And the answer is…';
+}
+function answersNext(){
+  const last = S.pics.length * 2 - 1;
+  if (aStep >= last) { showLeaderboard(); return; }
+  aStep++; renderAnswers();
+  if (aStep % 2 === 1) { const { c, answered } = tallies(Math.floor(aStep / 2)); const p = S.pics[Math.floor(aStep / 2)]; chime((c[p.ans] || 0) === answered && answered ? 6 : 3); }
+}
+function answersBack(){ if (aStep > 0) { aStep--; renderAnswers(); } }
+function answersSkip(){ const nxt = Math.floor(aStep / 2) * 2 + 2; if (nxt > S.pics.length * 2 - 1) { showLeaderboard(); return; } aStep = nxt; renderAnswers(); }
 function computeRanked(){
   const key = S.pics.map(p => p.ans), n = cur.tables || S.nTables;
   return Array.from({ length: n }, (_, k) => k + 1).map(t => {
@@ -841,6 +926,7 @@ function revealNext(){
   if (idx === 0) { [0, 3, 6].forEach((k, j) => setTimeout(() => chime(k), j * 160)); } else chime(1);
 }
 document.addEventListener('click', e => { if (view === 'results' && e.target.closest('[data-reveal]')) revealNext(); });
+document.addEventListener('click', e => { if (view === 'answers' && e.target.closest('.abody')) answersNext(); });
 
 // ---------- QR ----------
 const joinURL = () => new URL('picture.html', location.href).href;
@@ -927,12 +1013,19 @@ document.addEventListener('keydown', e => {
     else if (e.code === 'KeyC') closeRound(false);
     else if (e.code === 'KeyR') showResults();
     else if (e.code === 'Escape') { show('setup'); renderSetup(); }
+  } else if (view === 'answers') {
+    if (e.code === 'Space' || e.code === 'ArrowRight' || e.code === 'Enter') { e.preventDefault(); answersNext(); }
+    else if (e.code === 'ArrowLeft') answersBack();
+    else if (e.code === 'KeyN') answersSkip();
+    else if (e.code === 'KeyL') showLeaderboard();
+    else if (e.code === 'KeyB' || e.code === 'Escape') { show('board'); renderBoard(); }
   } else if (view === 'results') {
     const entries = ranked.filter(r => !r.none).length;
     if (e.code === 'Space') { e.preventDefault(); revealNext(); }
     else if (e.code === 'KeyV') { revealed = totalReveals(); applyVeil(); }
     else if (e.code === 'KeyA') $('key').classList.toggle('hidden');
     else if (e.code === 'KeyE') showEntries();
+    else if (e.code === 'KeyW') { show('answers'); renderAnswers(); }
     else if (e.code === 'KeyB' || e.code === 'Escape') { show('board'); renderBoard(); }
   } else if (view === 'entries') {
     if (e.code === 'KeyB' || e.code === 'Escape') show('results');
