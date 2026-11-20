@@ -151,6 +151,21 @@
   .nexthint{font-family:var(--mono);color:var(--gold);font-size:clamp(13px,1.1vw,17px);animation:breath 2.4s ease-in-out infinite}
   #rtable tr.justin td{animation:flipin .6s ease-out}
   @keyframes flipin{0%{transform:scaleY(.2);opacity:0}100%{transform:none;opacity:1}}
+  #staffWrap{width:min(1200px,92vw);margin-top:-1vh}
+  #staffWrap .slabel{font-family:var(--mono);font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:#C3CCD8;padding:0 22px 6px}
+  #stable{width:100%;border-collapse:separate;border-spacing:0 8px}
+  #stable td{background:#1C2A3D;padding:1.3vh 22px;font-size:clamp(17px,1.6vw,26px);border-top:1.5px dashed #9AA7BA;border-bottom:1.5px dashed #9AA7BA;white-space:nowrap}
+  #stable td:first-child{border-left:1.5px dashed #9AA7BA;border-radius:16px 0 0 16px;width:9vw}
+  #stable td:last-child{border-right:1.5px dashed #9AA7BA;border-radius:0 16px 16px 0;text-align:right;font-family:var(--mono);color:#C3CCD8}
+  #stable td.tb{font-weight:800}
+  #stable td.sc{font-family:var(--mono);font-weight:700}
+  #stable td.marks{font-family:var(--mono);letter-spacing:.3em}
+  #stable tr.veil td{color:#9AA7BA;background:transparent;cursor:pointer}
+  #stable tr.veil td:first-child,#stable tr.veil td:last-child{border-color:#C3CCD8}
+  #stable tr.veil:hover td{background:rgba(195,204,216,.08)}
+  .sbadge{display:inline-block;background:#C3CCD8;color:var(--navy);border-radius:999px;padding:3px 12px;font-family:var(--mono);font-size:clamp(12px,1vw,15px);font-weight:700;letter-spacing:.12em}
+  #results.compact #rtable td{padding:1.15vh 22px}
+  #results.compact{gap:2vh}
   #revealHint{font-family:var(--mono);color:var(--muted);font-size:clamp(14px,1.2vw,18px);text-align:center}
   #revealHint b{color:var(--gold)}
   #entries{display:flex;flex-direction:column;align-items:center;padding:5vh 4vw;gap:2.4vh}
@@ -273,6 +288,10 @@
 <section id="results" class="screen hidden">
   <div style="text-align:center"><div class="label">Game 01 · Picture This</div><h1>Results</h1></div>
   <table id="rtable"><thead><tr><th>Place</th><th>Table</th><th>Score</th><th>Pictures</th><th style="text-align:right">Time</th></tr></thead><tbody id="rrows"></tbody></table>
+  <div id="staffWrap" class="hidden">
+    <div class="slabel">Staff table · playing for fun, not ranked</div>
+    <table id="stable"><tbody id="srows"></tbody></table>
+  </div>
   <div id="revealHint"></div>
   <div id="key" class="hidden"></div>
   <div class="msg" id="resMsg" role="status"></div>
@@ -800,14 +819,26 @@ function applyVeil(justIdx){
     return `<tr class="${i === 0 ? 'first' : ''}${i === justIdx ? ' justin' : ''}" data-i="${i}"><td>${ord(i + 1)}</td><td class="tb">Table ${r.t}</td><td class="sc">${r.score} / ${key.length}</td>
        <td class="marks">${r.marks.map(m => `<span class="${m ? 'ok' : 'no'}">${m ? '✓' : '✗'}</span>`).join('')}</td><td>${mmssT(r.ms)}</td></tr>`;
   }).join('');
+  // Staff table(s): their own strip under the leaderboard, revealed as the final step after 1st place
+  const staffIn = staffRows.filter(r => !r.none), staffPending = staffIn.length && revealed === entries, staffShown = staffIn.length && revealed > entries;
+  $('staffWrap').classList.toggle('hidden', !(staffPending || staffShown));
+  $('results').classList.toggle('compact', !!staffIn.length);
+  $('srows').innerHTML = staffShown
+    ? staffIn.map(r => `<tr class="${justIdx === 'staff' ? 'justin' : ''}"><td><span class="sbadge">STAFF</span></td><td class="tb">Table ${r.t}</td><td class="sc">${r.score} / ${key.length}</td>
+        <td class="marks">${r.marks.map(m => `<span class="${m ? 'ok' : 'no'}">${m ? '✓' : '✗'}</span>`).join('')}</td><td>${mmssT(r.ms)}</td></tr>`).join('')
+    : `<tr class="veil" data-reveal="1" title="Click to reveal"><td><span class="sbadge">STAFF</span></td><td class="tb">And our staff table?</td><td class="sc"></td><td class="marks"></td><td><span class="nexthint" style="color:#C3CCD8">Click or press Space</span></td></tr>`;
   const left = Math.max(0, firstShown);
-  $('revealHint').innerHTML = !entries ? 'No table submitted an entry.'
+  $('revealHint').innerHTML = !entries && !staffIn.length ? 'No table submitted an entry.'
     : left ? `<b>${left}</b> ${left === 1 ? 'place' : 'places'} to reveal · press <b>Space</b> or click the gold row · <b>V</b> reveals all`
+    : staffPending ? 'One more: press <b>Space</b> to reveal how our staff table did'
     : 'All places revealed · press <b>A</b> for the correct answers · <b>E</b> for every entry';
 }
+const totalReveals = () => ranked.filter(r => !r.none).length + (staffRows.some(r => !r.none) ? 1 : 0);
 function revealNext(){
-  const entries = ranked.filter(r => !r.none).length; if (revealed >= entries) return;
-  revealed++; const idx = entries - revealed; applyVeil(idx);
+  const entries = ranked.filter(r => !r.none).length; if (revealed >= totalReveals()) return;
+  revealed++;
+  if (revealed > entries) { applyVeil('staff'); [2, 5].forEach((k, j) => setTimeout(() => chime(k), j * 140)); return; }
+  const idx = entries - revealed; applyVeil(idx);
   if (idx === 0) { [0, 3, 6].forEach((k, j) => setTimeout(() => chime(k), j * 160)); } else chime(1);
 }
 document.addEventListener('click', e => { if (view === 'results' && e.target.closest('[data-reveal]')) revealNext(); });
@@ -838,7 +869,7 @@ document.addEventListener('keydown', e => {
   } else if (view === 'results') {
     const entries = ranked.filter(r => !r.none).length;
     if (e.code === 'Space') { e.preventDefault(); revealNext(); }
-    else if (e.code === 'KeyV') { revealed = entries; applyVeil(); }
+    else if (e.code === 'KeyV') { revealed = totalReveals(); applyVeil(); }
     else if (e.code === 'KeyA') $('key').classList.toggle('hidden');
     else if (e.code === 'KeyE') showEntries();
     else if (e.code === 'KeyB' || e.code === 'Escape') { show('board'); renderBoard(); }
