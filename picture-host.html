@@ -872,7 +872,7 @@ function drawQR(el, size){
   const rr = (x, y, w, h, r) => { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); c.fill(); };
   const finder = (r, k) => (r < 7 && k < 7) || (r < 7 && k >= n - 7) || (r >= n - 7 && k < 7);
   const logo = lvl === 'H' && size >= 200;
-  const bw = Math.round(n * 0.44) * cell, bh = Math.round(n * 0.14) * cell;
+  const bw = Math.round(n * 0.46) * cell, bh = Math.round(n * 0.24) * cell;   // two-line badge: PHILLIP CFD / PICTURE THIS
   const bx = (size - bw) / 2, by = (size - bh) / 2;
   const underBadge = (x, y) => logo && x + cell > bx && x < bx + bw && y + cell > by && y < by + bh;
   c.fillStyle = NAVY;
@@ -894,15 +894,19 @@ function drawQR(el, size){
     c.beginPath(); const pad = cell * 0.5;
     c.roundRect ? c.roundRect(bx + pad, by + pad, bw - 2 * pad, bh - 2 * pad, cell) : c.rect(bx + pad, by + pad, bw - 2 * pad, bh - 2 * pad);
     c.stroke();
-    const W1 = 'PICTURE', W2 = 'THIS';
-    let fs = bh * 0.42; const sp = 0.14;
-    const word = (t) => { c.font = `800 ${fs}px Montserrat, "Segoe UI", Arial, sans-serif`; let w = 0; for (const ch of t) w += c.measureText(ch).width + fs * sp; return w - fs * sp; };
-    const gap = () => fs * 0.45;
-    while (word(W1) + gap() + word(W2) > bw * 0.82 && fs > 6) fs -= 0.5;
-    let x = size / 2 - (word(W1) + gap() + word(W2)) / 2; const y = by + bh / 2;
     c.textBaseline = 'middle';
-    const draw = (t, col) => { c.fillStyle = col; c.font = `800 ${fs}px Montserrat, "Segoe UI", Arial, sans-serif`; for (const ch of t) { c.fillText(ch, x, y); x += c.measureText(ch).width + fs * sp; } x -= fs * sp; };
-    draw(W1, NAVY); x += gap(); draw(W2, GOLD);
+    const sp = 0.14, FONT = fs => `800 ${fs}px Montserrat, "Segoe UI", Arial, sans-serif`;
+    const width = (t, fs) => { c.font = FONT(fs); let w = 0; for (const ch of t) w += c.measureText(ch).width + fs * sp; return w - fs * sp; };
+    // one line of two words, the first in colour a and the second in colour b, centred at height y
+    const line = (w1, a, w2, b, y, maxFs) => {
+      let fs = maxFs; const gap = () => fs * 0.45;
+      while (width(w1, fs) + gap() + width(w2, fs) > bw * 0.84 && fs > 6) fs -= 0.5;
+      let x = size / 2 - (width(w1, fs) + gap() + width(w2, fs)) / 2;
+      const draw = (t, col) => { c.fillStyle = col; c.font = FONT(fs); for (const ch of t) { c.fillText(ch, x, y); x += c.measureText(ch).width + fs * sp; } x -= fs * sp; };
+      draw(w1, a); x += gap(); draw(w2, b);
+    };
+    line('PHILLIP', NAVY, 'CFD', GOLD, by + bh * 0.36, bh * 0.25);
+    line('PICTURE', NAVY, 'THIS', GOLD, by + bh * 0.67, bh * 0.21);
   }
   el.appendChild(cv);
 }
