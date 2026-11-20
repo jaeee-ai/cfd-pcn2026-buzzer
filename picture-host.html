@@ -315,7 +315,6 @@
   <div class="label">Game 01 · Picture This</div>
   <h1>Scan to submit</h1>
   <div class="qrbox"><div id="qr"></div></div>
-  <div class="url" id="qrUrl"></div>
   <div class="help">Press <kbd>Q</kbd> or click to close</div>
 </div>
 
@@ -620,7 +619,7 @@ function renderBoard(){
   if (fresh.length) { const t = fresh[fresh.length - 1]; const who = isStaff(t) ? `Staff table ${t}` : `Table ${t}`; toast(subs[t].v ? `${who} has resubmitted!` : `${who} is in!`); chime(isStaff(t) ? 0 : order.indexOf(t)); }
   if (qrDrawn !== joinURL()) {
     qrDrawn = joinURL(); $('qrM').innerHTML = '';
-    try { new QRCode($('qrM'), { text: joinURL(), width: 120, height: 120, colorDark: '#0F1B2D', colorLight: '#FFFFFF', correctLevel: QRCode.CorrectLevel.M }); } catch (e) { $('qrM').textContent = 'QR'; }
+    drawQR($('qrM'), 120);
   }
   tick();
 }
@@ -845,13 +844,71 @@ document.addEventListener('click', e => { if (view === 'results' && e.target.clo
 
 // ---------- QR ----------
 const joinURL = () => new URL('picture.html', location.href).href;
+// Branded QR (same style as the buzzer): navy modules, gold corner eyes, a "PICTURE THIS" badge in the centre.
+// High error correction (H) keeps the code scannable with the centre covered.
+function qrModel(text){
+  for (const lvl of ['H', 'Q', 'M']) {
+    try {
+      const tmp = document.createElement('div');
+      const q = new QRCode(tmp, { text, width: 64, height: 64, correctLevel: QRCode.CorrectLevel[lvl] });
+      const m = q && q._oQRCode;
+      if (m && typeof m.isDark === 'function') return { m, lvl };
+    } catch (e) {}
+  }
+  return null;
+}
+function drawQR(el, size){
+  el.innerHTML = '';
+  const res = typeof QRCode !== 'undefined' ? qrModel(joinURL()) : null;
+  if (!res) { el.textContent = 'QR unavailable'; return; }
+  const { m, lvl } = res, n = m.getModuleCount(), cell = size / n, dpr = window.devicePixelRatio || 1;
+  const NAVY = '#0F1B2D', GOLD = '#B8892A', GOLD_LIGHT = '#E8B84A';
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(size * dpr); cv.height = Math.round(size * dpr);
+  cv.style.width = cv.style.height = size + 'px'; cv.style.display = 'block';
+  cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', 'QR code to join Picture This');
+  const c = cv.getContext('2d'); c.scale(dpr, dpr);
+  c.fillStyle = '#FFFFFF'; c.fillRect(0, 0, size, size);
+  const rr = (x, y, w, h, r) => { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); c.fill(); };
+  const finder = (r, k) => (r < 7 && k < 7) || (r < 7 && k >= n - 7) || (r >= n - 7 && k < 7);
+  const logo = lvl === 'H' && size >= 200;
+  const bw = Math.round(n * 0.44) * cell, bh = Math.round(n * 0.14) * cell;
+  const bx = (size - bw) / 2, by = (size - bh) / 2;
+  const underBadge = (x, y) => logo && x + cell > bx && x < bx + bw && y + cell > by && y < by + bh;
+  c.fillStyle = NAVY;
+  for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) {
+    if (!m.isDark(r, k) || finder(r, k)) continue;
+    const x = k * cell, y = r * cell;
+    if (underBadge(x, y)) continue;
+    c.fillRect(x, y, cell + 0.35, cell + 0.35);
+  }
+  for (const [r, k] of [[0, 0], [0, n - 7], [n - 7, 0]]) {
+    const x = k * cell, y = r * cell;
+    c.fillStyle = GOLD; rr(x, y, 7 * cell, 7 * cell, cell * 0.6);
+    c.fillStyle = '#FFFFFF'; rr(x + cell, y + cell, 5 * cell, 5 * cell, cell * 0.3);
+    c.fillStyle = GOLD; rr(x + 2 * cell, y + 2 * cell, 3 * cell, 3 * cell, cell * 0.3);
+  }
+  if (logo) {
+    c.fillStyle = '#FFFFFF'; rr(bx, by, bw, bh, cell * 1.2);
+    c.strokeStyle = GOLD_LIGHT; c.lineWidth = Math.max(1, cell * 0.35);
+    c.beginPath(); const pad = cell * 0.5;
+    c.roundRect ? c.roundRect(bx + pad, by + pad, bw - 2 * pad, bh - 2 * pad, cell) : c.rect(bx + pad, by + pad, bw - 2 * pad, bh - 2 * pad);
+    c.stroke();
+    const W1 = 'PICTURE', W2 = 'THIS';
+    let fs = bh * 0.42; const sp = 0.14;
+    const word = (t) => { c.font = `800 ${fs}px Montserrat, "Segoe UI", Arial, sans-serif`; let w = 0; for (const ch of t) w += c.measureText(ch).width + fs * sp; return w - fs * sp; };
+    const gap = () => fs * 0.45;
+    while (word(W1) + gap() + word(W2) > bw * 0.82 && fs > 6) fs -= 0.5;
+    let x = size / 2 - (word(W1) + gap() + word(W2)) / 2; const y = by + bh / 2;
+    c.textBaseline = 'middle';
+    const draw = (t, col) => { c.fillStyle = col; c.font = `800 ${fs}px Montserrat, "Segoe UI", Arial, sans-serif`; for (const ch of t) { c.fillText(ch, x, y); x += c.measureText(ch).width + fs * sp; } x -= fs * sp; };
+    draw(W1, NAVY); x += gap(); draw(W2, GOLD);
+  }
+  el.appendChild(cv);
+}
 function toggleQR(){
   const o = $('qrOverlay'); o.classList.toggle('hidden');
-  if (!o.classList.contains('hidden')) {
-    $('qr').innerHTML = ''; $('qrUrl').textContent = joinURL();
-    try { new QRCode($('qr'), { text: joinURL(), width: 320, height: 320, colorDark: '#0F1B2D', colorLight: '#FFFFFF', correctLevel: QRCode.CorrectLevel.M }); }
-    catch (e) { $('qr').textContent = joinURL(); }
-  }
+  if (!o.classList.contains('hidden')) drawQR($('qr'), 340);
 }
 $('qrOverlay').onclick = toggleQR;
 function fullscreen(){ try { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{}); else document.exitFullscreen().catch(()=>{}); } catch(e){} }
