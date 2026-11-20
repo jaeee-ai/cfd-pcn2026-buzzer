@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Buzzer Final · Host</title>
+<title>Buzzing Finale · Host</title>
 <style>
   :root{
     --navy:#0F1B2D; --panel:#17283F; --line:#2A3F5C; --gold:#E8B84A;
@@ -50,7 +50,7 @@
   #lobby{padding:5vh 5vw;display:flex;flex-direction:column;align-items:center;gap:3vh}
   #lobby h1{font-size:clamp(36px,5vw,72px);margin:0;font-weight:800;text-align:center}
   .lobby-row{display:flex;gap:5vw;align-items:center;flex-wrap:wrap;justify-content:center}
-  .qrbox{background:#fff;padding:18px;border-radius:20px;width:fit-content;margin:0 auto;box-shadow:0 0 0 2px #E8B84A}
+  .qrbox{background:#fff;padding:22px;border-radius:28px;width:fit-content;margin:0 auto}
   .joinurl{font-family:var(--mono);color:var(--muted);font-size:16px;text-align:center;word-break:break-all;max-width:520px}
   .room{font-family:var(--mono);font-size:22px;margin-top:16px;text-align:center}
   .room b{color:var(--gold);letter-spacing:.12em}
@@ -175,7 +175,7 @@
 <!-- SETUP -->
 <section id="setup" class="screen">
   <div class="card">
-    <div class="label">Buzzer final · setup</div>
+    <div class="label">Buzzing Finale · setup</div>
     <h2>Finalists</h2>
     <p>Enter the finalists' seat tags. Each finalist scans a QR code and taps their own tag on their phone. As a backup, the operator can buzz a player in by pressing their number (1–5) on this laptop.</p>
     <div class="tags" id="rows"></div>
@@ -216,7 +216,7 @@
 
 <!-- LOBBY -->
 <section id="lobby" class="screen hidden">
-  <div class="label">Game 02 · Buzzer final</div>
+  <div class="label">Game 02 · Buzzing Finale</div>
   <h1>Finalists, scan to join</h1>
   <div class="lobby-row">
     <div style="display:flex;flex-direction:column;align-items:center">
@@ -229,14 +229,14 @@
   <div class="actions">
     <button class="btn ghost" id="backSetup" type="button">Back to setup</button>
     <button class="btn ghost" id="resetJoins" type="button">Clear all joins</button>
-    <button class="btn primary" id="startGame" type="button">Start the buzzer final</button>
+    <button class="btn primary" id="startGame" type="button">Start the Buzzing Finale</button>
   </div>
 </section>
 
 <!-- GAME -->
 <main id="game" class="screen hidden">
   <header>
-    <div><div class="label">Game 02 · Round 2</div><h1>BUZZER FINAL</h1></div>
+    <div><div class="label">Game 02 · Round 2</div><h1>BUZZING FINALE</h1></div>
     <div id="qinfo"></div>
   </header>
   <div id="qpanel" aria-live="polite">
@@ -264,13 +264,13 @@
 <!-- WINNER -->
 <section id="winner" class="screen hidden" aria-live="polite">
   <div id="suspense">
-    <div class="label">Buzzer final · complete</div>
+    <div class="label">Buzzing Finale · complete</div>
     <div class="sus-title">And the winners are…</div>
     <div class="sus-sub">A big round of applause for our finalists</div>
     <div class="sus-tags" id="susTags"></div>
   </div>
   <div id="finalWrap" class="hidden">
-    <div class="label">Buzzer final</div>
+    <div class="label">Buzzing Finale</div>
     <h2>Final standings</h2>
     <table id="finalTable"><thead><tr><th>Place</th><th>Seat</th><th>Prize</th><th style="text-align:right">Points</th></tr></thead><tbody id="finalRows"></tbody></table>
   </div>
@@ -279,7 +279,7 @@
 
 <!-- PODIUM -->
 <section id="podium" class="screen hidden" aria-live="polite">
-  <div class="ptitle" id="pTitle"><div class="label">Buzzer final</div><h1>Congratulations!</h1></div>
+  <div class="ptitle" id="pTitle"><div class="label">Buzzing Finale</div><h1>Congratulations!</h1></div>
   <div class="pgrid">
     <div></div>
     <div class="stage" id="stage"></div>
@@ -479,7 +479,7 @@ function drawQR(el, size){
   const finder = (r, k) => (r < 7 && k < 7) || (r < 7 && k >= n - 7) || (r >= n - 7 && k < 7);
   // centre badge area (only with H correction and a big enough code)
   const logo = lvl === 'H' && size >= 200;
-  const bw = Math.round(n * 0.40) * cell, bh = Math.round(n * 0.14) * cell;
+  const bw = Math.round(n * 0.46) * cell, bh = Math.round(n * 0.24) * cell;
   const bx = (size - bw) / 2, by = (size - bh) / 2;
   const underBadge = (x, y) => logo && x + cell > bx && x < bx + bw && y + cell > by && y < by + bh;
   c.fillStyle = NAVY;
@@ -501,14 +501,16 @@ function drawQR(el, size){
     c.beginPath(); const pad = cell * 0.5;
     c.roundRect ? c.roundRect(bx + pad, by + pad, bw - 2 * pad, bh - 2 * pad, cell) : c.rect(bx + pad, by + pad, bw - 2 * pad, bh - 2 * pad);
     c.stroke();
-    let fs = bh * 0.42; const sp = 0.14;
-    const word = (t) => { c.font = `800 ${fs}px Montserrat, "Segoe UI", Arial, sans-serif`; let w = 0; for (const ch of t) w += c.measureText(ch).width + fs * sp; return w - fs * sp; };
-    const gap = () => fs * 0.45;
-    while (word('PHILLIP') + gap() + word('CFD') > bw * 0.82 && fs > 6) fs -= 0.5;
-    let x = size / 2 - (word('PHILLIP') + gap() + word('CFD')) / 2; const y = by + bh / 2;
+    const sp = 0.14, FONT = fs => `800 ${fs}px Montserrat, "Segoe UI", Arial, sans-serif`;
+    const lines = [[['PHILLIP', NAVY], ['CFD', GOLD]], [['BUZZING', NAVY], ['FINALE', GOLD]]];
+    const width = (line, fs) => { c.font = FONT(fs); let w = 0; line.forEach(([t], wi) => { for (const ch of t) w += c.measureText(ch).width + fs * sp; w -= fs * sp; if (wi < line.length - 1) w += fs * 0.45; }); return w; };
+    let fs = bh * 0.30;
+    while (Math.max(...lines.map(l => width(l, fs))) > bw * 0.84 && fs > 6) fs -= 0.5;
     c.textBaseline = 'middle';
-    const draw = (t, col) => { c.fillStyle = col; c.font = `800 ${fs}px Montserrat, "Segoe UI", Arial, sans-serif`; for (const ch of t) { c.fillText(ch, x, y); x += c.measureText(ch).width + fs * sp; } x -= fs * sp; };
-    draw('PHILLIP', NAVY); x += gap(); draw('CFD', GOLD);
+    lines.forEach((line, li) => {
+      let x = size / 2 - width(line, fs) / 2; const y = by + bh * (li === 0 ? 0.34 : 0.68);
+      line.forEach(([t, col], wi) => { c.fillStyle = col; c.font = FONT(fs); for (const ch of t) { c.fillText(ch, x, y); x += c.measureText(ch).width + fs * sp; } x -= fs * sp; if (wi < line.length - 1) x += fs * 0.45; });
+    });
   }
   el.appendChild(cv);
 }
